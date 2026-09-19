@@ -1,0 +1,45 @@
+:root {
+  --bg: #0e1116;
+  --panel: #151a21;
+  --elevated: #1b222c;
+  --fg: #e8edf4;
+  --fg-dim: #9aa7b8;
+  --accent: #6ea8fe;
+  --accent-2: #7ee0b8;
+  --warn: #f0b429;
+  --border: #263041;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.bootstrap-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.bootstrap-shell section {
+  max-width: 720px;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
