@@ -1,0 +1,22 @@
+{
+  "name": "sermon-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.18",
+    "react": "19.0.3",
+    "react-dom": "19.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "19.0.3",
+    "@types/react-dom": "19.0.3",
+    "typescript": "^5"
+  }
+}
