@@ -40,15 +40,6 @@ pub fn run() {
     let config_path = config_file_path();
     let cfg = AppConfig::load(&config_path);
 
-    // Startup reconciliation is the correctness mechanism; the file watcher is
-    // only an optimization. Run maintenance in the background so a large or
-    // missing vault can never block or crash app startup — any failure stays
-    // recoverable by the next reconciliation pass.
-    sermon_core::reconcile::spawn_startup_maintenance(
-        PathBuf::from(&cfg.vault_path),
-        PathBuf::from(&cfg.pastor_path),
-    );
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
