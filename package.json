@@ -47,6 +47,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\"",
     "serve": "next start",
     "type-check": "tsc --noEmit",
+    "ci:typecheck": "node scripts/ci/check-typescript-baseline.mjs",
+    "ci:test": "node scripts/ci/check-jest-baseline.mjs",
+    "ci:rust": "node scripts/ci/check-rust-baseline.mjs",
+    "ci:architecture": "node scripts/ci/check-architecture.mjs",
     "test": "jest",
     "test:watch": "jest --watch"
   },
