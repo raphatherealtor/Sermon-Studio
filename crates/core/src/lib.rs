@@ -23,6 +23,7 @@ pub mod directive;
 pub mod error;
 pub mod indexer;
 pub mod librarian;
+pub mod linter;
 pub mod reconcile;
 pub mod reference;
 pub mod retrieval;
