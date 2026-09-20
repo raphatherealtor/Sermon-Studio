@@ -1,0 +1,6 @@
+{
+  "checkpoint": "b459b30bff4e0488ea79a9e1e437a5faf0d5123e",
+  "rustPassedMinimum": 161,
+  "jestPassedMinimum": 70,
+  "typescriptErrorMaximum": 12
+}
