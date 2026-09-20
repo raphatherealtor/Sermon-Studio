@@ -25,6 +25,9 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
 once_cell = "1"
+# Track C: filesystem watcher used as a reconciliation *optimization* only.
+# Startup reconciliation remains the correctness mechanism.
+notify = "8"
 
 [profile.release]
 opt-level = "z"

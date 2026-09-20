@@ -16,19 +16,24 @@
 //! Nothing here touches the network. There is no telemetry. The `.md` files are
 //! canonical; both databases can be deleted and rebuilt from disk.
 
+pub mod atomic_save;
 pub mod books;
 pub mod canon;
+pub mod directive;
 pub mod error;
 pub mod indexer;
 pub mod librarian;
+pub mod reconcile;
 pub mod reference;
 pub mod retrieval;
 pub mod schema;
 pub mod sermon;
+pub mod vault_watcher;
 
+pub use directive::{Directive, SourceSpan};
 pub use error::{CoreError, Result};
 pub use reference::{PassageRef, VerseRef};
-pub use sermon::{Frontmatter, SermonDoc};
+pub use sermon::{Block, Frontmatter, Sermon, SermonDoc};
 
 /// Convenience: open canon.db read-only.
 pub fn open_canon_readonly(path: &std::path::Path) -> Result<rusqlite::Connection> {
