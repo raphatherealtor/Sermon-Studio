@@ -135,7 +135,8 @@ pub struct ParsedReference {
     /// True when the reference ends in an open continuation (`ff.`).
     pub open_ended: bool,
     /// Resolved passage, present when the reference is a single verse or a
-    /// contiguous range.
+    /// contiguous range. For an open-ended (`ff.`) reference this holds the
+    /// definite anchor.
     pub passage: Option<PassageRef>,
     /// Human-readable reason when [`Resolution::Ambiguous`] or [`Resolution::Invalid`].
     pub reason: Option<String>,
@@ -147,10 +148,13 @@ impl ParsedReference {
     /// A single verse is "John.3.16", a range is "John.3.16-John.3.18", and a
     /// non-contiguous verse list is "John.3.16,John.3.18,John.3.20".
     pub fn canonical(&self) -> Option<String> {
+        if self.resolution != Resolution::Definite {
+            return None;
+        }
         if let Some(p) = &self.passage {
             return Some(p.canonical());
         }
-        if self.resolution == Resolution::Definite && !self.verses.is_empty() {
+        if !self.verses.is_empty() {
             let book = self.book_num?;
             let chapter = self.chapter?;
             let osis = crate::books::BOOKS
@@ -712,6 +716,21 @@ fn invalid_from(base: &ParsedReference, reason: String) -> ParsedReference {
 /// Classify a fully parsed [`Loc`] into a [`ParsedReference`], applying
 /// chapter/verse range validation without clamping.
 fn classify(loc: &Loc, verse_only: bool, open_ended: bool, source: &str) -> ParsedReference {
+    let mut r = classify_closed(loc, verse_only, source);
+    r.open_ended = open_ended;
+    // An open-ended reference inherits the uncertainty of its unspecified
+    // terminal extent: the anchor is definite, but the reference as a whole is
+    // ambiguous. Preserve the anchor (book/chapter/verse_start and `passage`)
+    // while never fabricating a terminal verse.
+    if open_ended && r.resolution == Resolution::Definite {
+        r.resolution = Resolution::Ambiguous;
+        r.verse_end = None;
+        r.reason = Some("open-ended reference: terminal extent is unspecified".to_string());
+    }
+    r
+}
+
+fn classify_closed(loc: &Loc, verse_only: bool, source: &str) -> ParsedReference {
     let base = ParsedReference {
         resolution: Resolution::Ambiguous,
         source: source.to_string(),
@@ -721,7 +740,7 @@ fn classify(loc: &Loc, verse_only: bool, open_ended: bool, source: &str) -> Pars
         verse_start: loc.verse_start,
         verse_end: loc.verse_end,
         verses: loc.verses.clone(),
-        open_ended,
+        open_ended: false,
         passage: None,
         reason: None,
     };
@@ -1047,22 +1066,41 @@ mod tests {
     // -- Open-ended / ff. behavior -------------------------------------------
 
     #[test]
-    fn ff_never_invents_a_terminal_verse() {
-        let r = resolve("John iii.16ff.").unwrap();
-        assert_eq!(r.resolution, Resolution::Definite);
-        assert!(r.open_ended, "ff. must set the open-ended flag");
-        assert_eq!(r.canonical().as_deref(), Some("John.3.16"));
-        assert_eq!(r.verse_start, Some(16));
-        assert_eq!(r.verse_end, Some(16), "no invented end verse");
+    fn ff_references_are_ambiguous_and_preserve_the_anchor() {
+        // The anchor "John 3:16" is definite, but the full "ff." reference has
+        // an unspecified terminal extent, so it inherits Ambiguous.
+        for input in ["John iii.16ff.", "John 3:16ff.", "John 3:16 ff."] {
+            let r = resolve(input).unwrap();
+            assert_eq!(r.resolution, Resolution::Ambiguous, "input: {input}");
+            assert!(r.open_ended, "ff. must set the open-ended flag: {input}");
+            // The definite anchor is preserved as structured information.
+            assert_eq!(r.book_num, Some(43), "input: {input}");
+            assert_eq!(r.chapter, Some(3), "input: {input}");
+            assert_eq!(r.verse_start, Some(16), "input: {input}");
+            assert_eq!(
+                r.passage.as_ref().map(PassageRef::canonical),
+                Some("John.3.16".to_string()),
+                "anchor passage must be preserved: {input}"
+            );
+            // No terminal verse may be invented.
+            assert_eq!(r.verse_end, None, "no terminal verse may be invented: {input}");
+            assert_eq!(r.canonical(), None, "ambiguous reference has no canonical form: {input}");
+        }
+    }
 
-        let spaced = resolve("John 3:16 ff.").unwrap();
-        assert_eq!(spaced.resolution, Resolution::Definite);
-        assert!(spaced.open_ended);
-        assert_eq!(spaced.canonical().as_deref(), Some("John.3.16"));
-
+    #[test]
+    fn bare_ff_remains_ambiguous() {
         let bare = resolve("ff.").unwrap();
         assert_eq!(bare.resolution, Resolution::Ambiguous);
         assert!(bare.open_ended);
+        assert_eq!(bare.book_num, None);
+    }
+
+    #[test]
+    fn closed_references_remain_definite() {
+        assert_eq!(resolve("John 3:16").unwrap().resolution, Resolution::Definite);
+        assert_eq!(resolve("John 3:16-18").unwrap().resolution, Resolution::Definite);
+        assert_eq!(resolve("John 3:16").unwrap().canonical().as_deref(), Some("John.3.16"));
     }
 
     // -- Verse list behavior -------------------------------------------------
