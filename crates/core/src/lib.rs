@@ -21,6 +21,7 @@ pub mod books;
 pub mod canon;
 pub mod directive;
 pub mod error;
+pub mod export;
 pub mod indexer;
 pub mod librarian;
 pub mod reconcile;
