@@ -1,7 +1,15 @@
-// Isolated Tauri IPC adapter stub.
+// Isolated Tauri IPC adapter.
 // Dynamically imports @tauri-apps/api only when instantiated.
 // NEVER import this directly in React components — use BackendContext.
 // No business logic here — thin IPC calls only.
+//
+// Error contract:
+// - BackendUnavailableError: not running inside the Tauri runtime (browser or
+//   static preview). The app must fall back to MockSermonBackend.
+// - BackendCommandError: the native command failed; `code` is 'unsupported'
+//   for typed unsupported errors and 'command-failed' otherwise.
+// - Command names and payload casing match the Rust side exactly
+//   (snake_case commands, camelCase payload fields).
 
 import type { SermonBackend } from './SermonBackend';
 import type {
@@ -40,9 +48,59 @@ import type {
 
 // Dynamic import isolates Tauri dependency from the browser bundle.
 // This file must never be imported by React components directly.
+
+export type BackendErrorCode = 'unavailable' | 'unsupported' | 'command-failed';
+
+export class BackendUnavailableError extends Error {
+  readonly code: BackendErrorCode = 'unavailable';
+  readonly command: string;
+  constructor(command: string, cause: unknown) {
+    super(
+      `Native backend unavailable for "${command}": the Tauri runtime is not ` +
+        'present (browser/static preview). Use MockSermonBackend instead.'
+    );
+    this.name = 'BackendUnavailableError';
+    this.command = command;
+    if (cause !== undefined) {
+      (this as { cause?: unknown }).cause = cause;
+    }
+  }
+}
+
+export class BackendCommandError extends Error {
+  readonly code: BackendErrorCode;
+  readonly command: string;
+  constructor(command: string, message: string) {
+    super(`[${command}] ${message}`);
+    this.name = 'BackendCommandError';
+    this.command = command;
+    if (message.startsWith('unsupported:')) {
+      this.code = 'unsupported';
+    } else {
+      this.code = 'command-failed';
+    }
+  }
+}
+
+export function isBackendUnavailableError(e: unknown): e is BackendUnavailableError {
+  return e instanceof BackendUnavailableError;
+}
+
 async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core' as string);
-  return invoke<T>(command, args);
+  let invoke: <R>(cmd: string, args?: Record<string, unknown>) => Promise<R>;
+  try {
+    // Resolved at runtime only inside the Tauri webview.
+    ({ invoke } = await import('@tauri-apps/api/core' as string));
+  } catch (e) {
+    throw new BackendUnavailableError(command, e);
+  }
+  try {
+    return await invoke<T>(command, args);
+  } catch (e) {
+    const message =
+      typeof e === 'string' ? e : e instanceof Error ? e.message : JSON.stringify(e);
+    throw new BackendCommandError(command, message);
+  }
 }
 
 export class TauriSermonBackend implements SermonBackend {
