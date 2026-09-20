@@ -1,13 +1,13 @@
 import React from 'react';
 import AppLayout from '@/components/AppLayout';
 import { BackendProvider } from '@/lib/backend/BackendContext';
-import SermonEditorWorkspace from './components/SermonEditorWorkspace';
+import ArchiveOverviewContent from './components/ArchiveOverviewContent';
 
-export default function HomePage() {
+export default function ArchiveOverviewPage() {
   return (
     <BackendProvider>
       <AppLayout>
-        <SermonEditorWorkspace />
+        <ArchiveOverviewContent />
       </AppLayout>
     </BackendProvider>
   );

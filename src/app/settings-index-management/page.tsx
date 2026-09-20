@@ -1,13 +1,13 @@
 import React from 'react';
 import AppLayout from '@/components/AppLayout';
 import { BackendProvider } from '@/lib/backend/BackendContext';
-import SermonEditorWorkspace from './components/SermonEditorWorkspace';
+import SettingsContent from './components/SettingsContent';
 
-export default function HomePage() {
+export default function SettingsPage() {
   return (
     <BackendProvider>
       <AppLayout>
-        <SermonEditorWorkspace />
+        <SettingsContent />
       </AppLayout>
     </BackendProvider>
   );
