@@ -611,6 +611,7 @@ export class MockSermonBackend implements SermonBackend {
         endVerse: m[4] ? parseInt(m[4]) : null,
         offset: m.index,
         length: m[0].length,
+        resolution: 'definite',
       });
     }
     return refs;

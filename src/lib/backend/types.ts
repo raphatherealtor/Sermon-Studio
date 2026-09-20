@@ -208,16 +208,22 @@ export interface SearchFilters {
 
 // ── References ────────────────────────────────────────────────────────────────
 // TypeScript defines the transport contract; Rust owns citation parsing.
+// The transport preserves Track A's three resolution states explicitly;
+// nothing is collapsed to a generic successful reference.
+
+export type ReferenceResolution = 'definite' | 'ambiguous' | 'invalid';
 
 export interface ReferenceMatch {
   raw: string;
   book: string;
-  chapter: number;
+  chapter: number; // 0 when the reference is context-only (e.g. "v.6")
   verse: number | null;
   endVerse: number | null;
   offset: number;
   length: number;
-  osisId?: string;
+  osisId?: string; // canonical dotted form — present only for definite matches
+  resolution: ReferenceResolution;
+  reason?: string; // human-readable reason for ambiguous/invalid matches
 }
 
 // ── Linting ───────────────────────────────────────────────────────────────────
