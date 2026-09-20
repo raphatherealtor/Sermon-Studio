@@ -27,9 +27,30 @@ pub struct IndexStats {
 /// Open (creating if needed) the pastor.db at `path` with the derived schema.
 pub fn open_pastor_db(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
+    // Reconciliation (watcher thread) and editor commands use separate
+    // connections concurrently; give SQLite a bounded wait instead of failing
+    // fast on a transient write lock.
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(PASTOR_SCHEMA)?;
     Ok(conn)
+}
+
+/// Vault-relative path string with forward slashes — the platform-stable
+/// representation stored in `sermon_index.file_path` (shared by the indexer,
+/// reconciliation, and the watcher so they always agree).
+pub(crate) fn rel_path_string(vault: &Path, path: &Path) -> String {
+    path.strip_prefix(vault)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// True when any vault-relative path component is hidden and must be skipped
+/// (mirrors the v1 rule: relative to the vault root, so a vault under a
+/// dot-directory still works).
+pub(crate) fn is_hidden_rel(rel: &str) -> bool {
+    rel.split('/').any(|c| c.starts_with('.') && c != "." && c != "..")
 }
 
 /// Full rebuild: wipe all derived tables and re-ingest every `.md` in `vault`.
@@ -40,8 +61,9 @@ pub fn rebuild(vault: &Path, db_path: &Path) -> Result<IndexStats> {
     let start = std::time::Instant::now();
     let mut conn = open_pastor_db(db_path)?;
 
-    // Drop derived content. FTS is external-content, so we clear it via the
-    // 'delete-all' command, then truncate the base tables.
+    // Drop derived content. `sermons_fts` is self-contained (it stores its
+    // own text; see PASTOR_SCHEMA), so a plain DELETE clears it together with
+    // the base tables and it is repopulated during re-ingest.
     conn.execute_batch(
         "DELETE FROM illustration_usage;
          DELETE FROM scripture_sermon_links;
@@ -106,17 +128,9 @@ fn index_into(conn: &mut Connection, vault: &Path, incremental: bool) -> Result<
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        let rel = path
-            .strip_prefix(vault)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-        // Skip hidden files/dirs, judged relative to the vault root (so a vault
-        // living under a dot-directory still works).
-        if rel
-            .split('/')
-            .any(|c| c.starts_with('.') && c != "." && c != "..")
-        {
+        let rel = rel_path_string(vault, path);
+        // Skip hidden files/dirs (also skips atomic-save `.sstmp` artifacts).
+        if is_hidden_rel(&rel) {
             continue;
         }
         stats.scanned += 1;
