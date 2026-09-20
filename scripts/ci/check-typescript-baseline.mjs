@@ -9,8 +9,6 @@ const result = spawnSync(process.execPath, [tsc, '--noEmit', '--pretty', 'false'
   encoding: 'utf8',
 });
 
-printProcessOutput(result);
-
 if (result.error) fail(`TypeScript could not start: ${result.error.message}`);
 if (result.signal) fail(`TypeScript ended from signal ${result.signal}`);
 
@@ -18,9 +16,11 @@ const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
 const errorCount = (output.match(/\berror TS\d+:/g) ?? []).length;
 
 if (result.status !== 0 && errorCount === 0) {
+  printProcessOutput(result);
   fail(`TypeScript exited ${result.status} without countable diagnostics`);
 }
 if (errorCount > baseline.typescriptErrorMaximum) {
+  printProcessOutput(result);
   fail(
     `TypeScript errors increased to ${errorCount}; checkpoint maximum is ${baseline.typescriptErrorMaximum}`,
   );
