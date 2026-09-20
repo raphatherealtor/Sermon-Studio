@@ -620,10 +620,19 @@ pub fn set_config(state: State<AppState>, config: crate::config::AppConfig) -> A
 
 #[tauri::command]
 pub fn set_vault(state: State<AppState>, vault_path: String) -> ApiResult<ConfigView> {
-    {
+    let changed = {
         let mut cfg = state.config.lock().unwrap();
+        let changed = cfg.vault_path != vault_path;
         cfg.vault_path = vault_path;
         cfg.save(&state.config_path).map_err(|e| e.to_string())?;
+        changed
+    };
+    // Fresh installs have no vault at first launch, so startup maintenance
+    // was never spawned; starting it here is what makes the first picked
+    // vault reconcile and watch without an app restart.
+    if changed {
+        let cfg = state.config.lock().unwrap().clone();
+        crate::spawn_maintenance(&cfg);
     }
     Ok(get_config(state))
 }

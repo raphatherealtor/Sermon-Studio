@@ -139,6 +139,34 @@ fn blocks_markdown(s: &sermon::Sermon) -> String {
         .join("")
 }
 
+/// Refuse to persist a body that is actually an HTML serialization (the
+/// editor transport contract declares `body` as TipTap HTML). The canonical
+/// sermon on disk is Markdown; writing HTML would silently strip frontmatter
+/// and directives and churn the sermon identity on the next parse.
+///
+/// The discriminator is block-level HTML at a line start (`<p>`, `<div>`,
+/// `<h1>` …) — TipTap's `getHTML()` always emits those, while canonical
+/// sermon markdown never begins a line with a block tag. Inline HTML inside
+/// prose is legal Markdown and passes through.
+fn ensure_canonical_markdown(body: &str) -> ApiResult<()> {
+    const BLOCK_TAGS: [&str; 15] = [
+        "<p>", "<p ", "<div", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6", "<ul", "<ol", "<li",
+        "<blockquote", "<table", "<pre",
+    ];
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if BLOCK_TAGS.iter().any(|tag| trimmed.starts_with(tag)) {
+            return Err(
+                "refusing to persist non-markdown body: the editor transport sent \
+                 HTML, but the canonical sermon file is Markdown. No file was \
+                 modified. Re-save from a markdown-serialized editor buffer."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 fn word_count(text: &str) -> u32 {
     text.split_whitespace().count() as u32
 }
@@ -339,6 +367,12 @@ pub fn load_sermon(vault: &Path, rel_path: &str) -> ApiResult<(SermonDocumentDto
 /// Conflict-safe save. Never auto-overwrites content the editor has not seen:
 /// if the disk file differs from both the incoming buffer and the session
 /// baseline, a conflict result is returned and the file is left untouched.
+///
+/// The transport contract declares `SermonDocument.body` as TipTap HTML
+/// (`types.ts`), but the canonical on-disk sermon is Markdown. Persisting an
+/// HTML body would silently strip frontmatter and directives (and churn the
+/// sermon identity on the next parse), so [`ensure_canonical_markdown`]
+/// refuses before any byte reaches the disk.
 pub fn save_sermon(
     vault: &Path,
     conn: &mut Connection,
@@ -350,6 +384,7 @@ pub fn save_sermon(
         .clone()
         .ok_or_else(|| "save_sermon: document has no sourcePath".to_string())?;
     let body = doc.body.clone();
+    ensure_canonical_markdown(&body)?;
     let disk = sermon_core::atomic_save::read_vault_file(vault, &rel).ok();
     let baseline_hash = baselines
         .get(doc.id.as_str())
@@ -729,7 +764,16 @@ pub fn resolve_conflict(
                 })?;
         }
         "use-disk" => {
-            // No write: the frontend reloads from disk.
+            // No write: the frontend reloads from disk. Drop any pending local
+            // buffer and re-anchor the session baseline at the current disk
+            // bytes, so the next save or status check does not resurrect the
+            // conflict the user just resolved.
+            if let Some(rel) = find_sermon_path(conn, &req.sermon_id)? {
+                match sermon_core::atomic_save::read_vault_file(vault, &rel) {
+                    Ok(disk) => baselines.record(&req.sermon_id, Baseline::new(rel, disk)),
+                    Err(_) => baselines.remove(&req.sermon_id),
+                }
+            }
             return Ok(SaveResultDto {
                 success: true,
                 saved_at: now_rfc3339(),
@@ -766,6 +810,7 @@ pub fn resolve_conflict(
         None => find_sermon_path(conn, &req.sermon_id)?
             .ok_or_else(|| format!("sermon not found: {}", req.sermon_id))?,
     };
+    ensure_canonical_markdown(&content)?;
     sermon_core::atomic_save::save_sermon_atomic(vault, &rel, &content).map_err(err)?;
     let parsed = sermon::SermonDoc::parse(&content).map_err(err)?;
     let mut stats = indexer::IndexStats::default();
@@ -1573,6 +1618,98 @@ mod tests {
         let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
         assert!(on_disk.contains("Externally edited body."));
         assert!(!on_disk.contains("Local edit."));
+    }
+
+    #[test]
+    fn save_refuses_html_body_and_leaves_canonical_file_untouched() {
+        let (_tmp, vault, db) = setup("htmlguard");
+        let (mut conn, _content) = seed(&vault, &db);
+        let (doc, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&doc.id, baseline);
+
+        // The transport contract declares body as TipTap HTML; persisting it
+        // would strip frontmatter/directives from the canonical file.
+        let mut html_doc = doc.clone();
+        html_doc.body = "<h1>Alpha</h1><p>God so loved the world.</p>".to_string();
+        let result = save_sermon(&vault, &mut conn, &mut baselines, &html_doc);
+        assert!(result.is_err(), "HTML body must be refused: {result:?}");
+        assert!(result.unwrap_err().contains("non-markdown body"));
+
+        // Canonical file is byte-identical after the refused save.
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("id: alpha"), "frontmatter must survive");
+        assert!(!on_disk.contains("<h1>"));
+
+        // Inline HTML inside an otherwise-markdown body is legal and passes.
+        let mut inline = doc.clone();
+        inline.body.push_str("\nText with <em>inline</em> HTML.\n");
+        let result = save_sermon(&vault, &mut conn, &mut baselines, &inline).unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn use_disk_reanchors_baseline_and_drops_pending_buffer() {
+        let (_tmp, vault, db) = setup("usedisk");
+        let (mut conn, _content) = seed(&vault, &db);
+        let (doc, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&doc.id, baseline);
+
+        // External edit, then a rejected local save (records the buffer).
+        let external = sermon_md("alpha", "Alpha", "Disk version wins.");
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "alpha.md", &external).unwrap();
+        let mut edited = doc.clone();
+        edited.body.push_str("\nLocal edit.\n");
+        let result = save_sermon(&vault, &mut conn, &mut baselines, &edited).unwrap();
+        assert!(!result.success);
+
+        // Status before resolving: both changed.
+        let st = get_filesystem_status(&vault, &conn, &baselines, &doc.id).unwrap();
+        assert_eq!(st.state, "both-changed");
+
+        // Use Disk: disk is adopted, buffer dropped, status clean again.
+        let res = resolve_conflict(
+            &vault,
+            &mut conn,
+            &mut baselines,
+            &ConflictResolutionDto {
+                sermon_id: doc.id.clone(),
+                strategy: "use-disk".into(),
+                merged_body: None,
+                save_as_path: None,
+            },
+        )
+        .unwrap();
+        assert!(res.success);
+        let st = get_filesystem_status(&vault, &conn, &baselines, &doc.id).unwrap();
+        assert_eq!(st.state, "clean");
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("Disk version wins."));
+    }
+
+    #[test]
+    fn html_body_is_refused_for_conflict_strategies_too() {
+        let (_tmp, vault, db) = setup("htmlresolve");
+        let (mut conn, _content) = seed(&vault, &db);
+        let (doc, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&doc.id, baseline);
+
+        let res = resolve_conflict(
+            &vault,
+            &mut conn,
+            &mut baselines,
+            &ConflictResolutionDto {
+                sermon_id: doc.id.clone(),
+                strategy: "merge".into(),
+                merged_body: Some("<p>merged as HTML</p>".to_string()),
+                save_as_path: None,
+            },
+        );
+        assert!(res.is_err(), "HTML merged body must be refused");
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("id: alpha"), "canonical file untouched");
     }
 
     #[test]

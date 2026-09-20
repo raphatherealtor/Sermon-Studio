@@ -33,7 +33,7 @@ interface ConflictBannerProps {
 
 function ConflictBanner({ sermonId, onResolved }: ConflictBannerProps) {
   const backend = useBackend();
-  const { conflictInfo, setConflict, setShowMergeDrawer, showMergeDrawer } = useEditorStore();
+  const { conflictInfo, setConflict, setDocument, setShowMergeDrawer, showMergeDrawer } = useEditorStore();
   const [resolving, setResolving] = useState(false);
   const [diff, setDiff] = useState<DiffPreparationResult | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
@@ -63,6 +63,11 @@ function ConflictBanner({ sermonId, onResolved }: ConflictBannerProps) {
     setResolving(true);
     try {
       await backend.resolveConflict({ sermonId, strategy: 'use-disk' });
+      // Adopt the disk version in the editor — the in-memory buffer still
+      // holds the losing local edits, and the next save would otherwise
+      // re-conflict (or silently resurrect edits the user discarded).
+      const fresh = await backend.loadSermon(sermonId);
+      setDocument(fresh);
       setConflict(null);
       onResolved();
     } finally {

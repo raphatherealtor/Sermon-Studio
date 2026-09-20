@@ -87,10 +87,17 @@ export default function ConflictResolutionContent() {
     setResolving(true);
     setResolveError(null);
     try {
-      // BACKEND INTEGRATION POINT: adapter.resolveConflict
+      // BACKEND INTEGRATION POINT: adapter.resolveConflict. The backend
+      // contract names the strategies keep-local / use-disk / merge; this
+      // screen's demo vocabulary maps onto them one-to-one.
       const request: ConflictResolution = {
         sermonId: CONFLICT_META.sermonId,
-        strategy,
+        strategy:
+          strategy === 'keep-mine'
+            ? 'keep-local'
+            : strategy === 'keep-theirs'
+              ? 'use-disk'
+              : 'merge',
         mergedBody: strategy === 'merge' ? MINE_BODY + '\n\n[Merged section from disk version]' : undefined,
       };
       await backend.resolveConflict(request);
