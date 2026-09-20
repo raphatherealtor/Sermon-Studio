@@ -10,9 +10,9 @@ use crate::config::AppConfig;
 use crate::dto;
 use crate::dto::*;
 use rusqlite::{params, Connection, OptionalExtension};
-use sermon_core::{indexer, reconcile, reference, retrieval, sermon};
+use sermon_core::{export, indexer, linter, reconcile, reference, retrieval, sermon};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub type ApiResult<T> = Result<T, String>;
 
@@ -1097,6 +1097,300 @@ pub fn test_directive_codec(input: &str) -> CodecRoundTripResultDto {
 }
 
 // ---------------------------------------------------------------------------
+// Structural linting (Track E business logic, Track F transport mapping)
+// ---------------------------------------------------------------------------
+
+fn replace_document_body(raw: &str, body: &str) -> String {
+    let bom_len = if raw.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    if !raw[bom_len..].starts_with("---") {
+        return body.to_string();
+    }
+    let Some(first_newline) = raw[bom_len..].find('\n').map(|i| bom_len + i) else {
+        return body.to_string();
+    };
+    let mut offset = first_newline + 1;
+    for line in raw[offset..].split_inclusive('\n') {
+        if line.trim_end_matches(['\n', '\r']).trim() == "---" {
+            let body_start = offset + line.len();
+            return format!("{}{}", &raw[..body_start], body);
+        }
+        offset += line.len();
+    }
+    body.to_string()
+}
+
+fn document_source(vault: &Path, doc: &SermonDocumentDto) -> String {
+    doc.source_path
+        .as_deref()
+        .and_then(|path| sermon_core::atomic_save::read_vault_file(vault, path).ok())
+        .map(|raw| replace_document_body(&raw, &doc.body))
+        .unwrap_or_else(|| doc.body.clone())
+}
+
+fn lint_finding_dto(finding: linter::Finding, source: &str) -> LintFindingDto {
+    let source_range = finding.span.map(|span| {
+        let start = linter::line_col_at(source, span.start);
+        let end = linter::line_col_at(source, span.end);
+        SourceRangeDto {
+            start_line: start.line,
+            start_col: start.column,
+            end_line: end.line,
+            end_col: end.column,
+        }
+    });
+    let block_id = finding.block.as_ref().map(|block| {
+        block
+            .order
+            .map(|order| format!("{}-{order}", block.kind))
+            .or_else(|| block.title.as_deref().map(sermon::slugify))
+            .unwrap_or_else(|| block.kind.clone())
+    });
+    let location = source_range.as_ref().map(|range| {
+        format!(
+            "{}:{}-{}:{}",
+            range.start_line, range.start_col, range.end_line, range.end_col
+        )
+    });
+    let severity = match finding.severity {
+        linter::Severity::Error => "error",
+        linter::Severity::Warning => "warning",
+    }
+    .to_string();
+    LintFindingDto {
+        id: finding.id,
+        severity,
+        code: finding.rule_id.clone(),
+        rule_id: finding.rule_id,
+        message: finding.message,
+        location,
+        movement_id: finding
+            .block
+            .as_ref()
+            .filter(|block| block.kind == "movement")
+            .and(block_id.clone()),
+        block_id,
+        source_range,
+    }
+}
+
+pub fn lint_document(
+    vault: &Path,
+    pastor: Option<&Connection>,
+    doc: &SermonDocumentDto,
+) -> ApiResult<Vec<LintFindingDto>> {
+    let source = document_source(vault, doc);
+    let parsed = sermon::Sermon::parse(&source).map_err(err)?;
+    let sermon_id = if doc.id.trim().is_empty() {
+        parsed
+            .meta
+            .id
+            .clone()
+            .unwrap_or_else(|| sermon::slugify(&doc.title))
+    } else {
+        doc.id.clone()
+    };
+    let mut findings = linter::lint_sermon(&parsed, &sermon_id);
+    if let Some(conn) = pastor {
+        let labels: Vec<String> = parsed
+            .illustrations()
+            .map(|illustration| {
+                illustration
+                    .title
+                    .clone()
+                    .or_else(|| illustration.id.clone())
+                    .unwrap_or_else(|| {
+                        illustration.body.lines().next().unwrap_or_default().to_string()
+                    })
+            })
+            .collect();
+        let mut fatigue = linter::lint_illustration_fatigue(
+            conn,
+            &sermon_id,
+            parsed.meta.date_preached.as_deref(),
+            &labels,
+        )
+        .map_err(err)?;
+        findings.append(&mut fatigue);
+    }
+    Ok(findings
+        .into_iter()
+        .map(|finding| lint_finding_dto(finding, &doc.body))
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Immutable source snapshots + Track D PDF execution
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct ExportSourceSnapshot {
+    pub snapshot_id: String,
+    pub sermon_id: String,
+    pub sermon_title: String,
+    pub created_at: String,
+    pub revision_hash: String,
+    pub word_count: u32,
+    pub raw_source: String,
+}
+
+static SNAPSHOT_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn new_snapshot_id(raw_source: &str) -> String {
+    use std::sync::atomic::Ordering;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let counter = SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let identity = format!("{nonce}:{counter}:{raw_source}");
+    format!("snap-{}", sermon::sha256_hex(identity.as_bytes()))
+}
+
+impl ExportSourceSnapshot {
+    pub fn to_dto(&self) -> ExportSnapshotDto {
+        ExportSnapshotDto {
+            snapshot_id: self.snapshot_id.clone(),
+            sermon_id: self.sermon_id.clone(),
+            sermon_title: self.sermon_title.clone(),
+            created_at: self.created_at.clone(),
+            revision_hash: self.revision_hash.clone(),
+            word_count: self.word_count,
+            status: "ready".to_string(),
+        }
+    }
+}
+
+pub fn create_export_source_snapshot(
+    vault: &Path,
+    conn: &Connection,
+    sermon_id: &str,
+) -> ApiResult<ExportSourceSnapshot> {
+    let rel = find_sermon_path(conn, sermon_id)?
+        .ok_or_else(|| format!("sermon not found: {sermon_id}"))?;
+    let raw_source = sermon_core::atomic_save::read_vault_file(vault, &rel).map_err(err)?;
+    let parsed = sermon::Sermon::parse(&raw_source).map_err(err)?;
+    Ok(ExportSourceSnapshot {
+        snapshot_id: new_snapshot_id(&raw_source),
+        sermon_id: sermon_id.to_string(),
+        sermon_title: parsed
+            .meta
+            .title
+            .clone()
+            .unwrap_or_else(|| "(untitled)".to_string()),
+        created_at: now_rfc3339(),
+        revision_hash: sermon::sha256_hex(raw_source.as_bytes()),
+        word_count: word_count(&raw_source),
+        raw_source,
+    })
+}
+
+fn core_export_request(request: &ExportRequestDto) -> ApiResult<export::ExportRequest> {
+    let format = match request.format.as_str() {
+        "pulpit_manuscript" => export::ExportFormat::PulpitManuscript,
+        "church_bulletin" => export::ExportFormat::ChurchBulletin,
+        other => return Err(format!("unsupported export format: {other}")),
+    };
+    let pulpit_mode = match request.manuscript_mode.as_deref() {
+        Some(mode) => Some(
+            export::PulpitMode::parse(mode)
+                .ok_or_else(|| format!("unsupported pulpit manuscript mode: {mode}"))?,
+        ),
+        None => None,
+    };
+    Ok(export::ExportRequest {
+        format,
+        pulpit_mode,
+        include_private_notes: request.options.include_notes.unwrap_or(false),
+    })
+}
+
+fn export_format_name(format: export::ExportFormat) -> &'static str {
+    match format {
+        export::ExportFormat::PulpitManuscript => "pulpit_manuscript",
+        export::ExportFormat::ChurchBulletin => "church_bulletin",
+    }
+}
+
+fn export_output_path(
+    vault: &Path,
+    snapshot: &ExportSourceSnapshot,
+    request: &ExportRequestDto,
+) -> ApiResult<PathBuf> {
+    if let Some(path) = request
+        .options
+        .output_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+    {
+        let path = PathBuf::from(path);
+        return Ok(if path.is_absolute() { path } else { vault.join(path) });
+    }
+    let filename = request
+        .options
+        .output_filename
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| {
+            Path::new(name)
+                .file_name()
+                .and_then(|part| part.to_str())
+                .map(str::to_string)
+                .ok_or_else(|| "invalid export output filename".to_string())
+        })
+        .transpose()?
+        .unwrap_or_else(|| {
+            format!(
+                "{}-{}.pdf",
+                sermon::slugify(&snapshot.sermon_title),
+                request.format
+            )
+        });
+    let filename = if filename.to_ascii_lowercase().ends_with(".pdf") {
+        filename
+    } else {
+        format!("{filename}.pdf")
+    };
+    Ok(vault.join("exports").join(filename))
+}
+
+pub fn execute_export_snapshot(
+    vault: &Path,
+    snapshot: &ExportSourceSnapshot,
+    request: &ExportRequestDto,
+) -> ApiResult<ExportResultDto> {
+    if request.sermon_id != snapshot.sermon_id {
+        return Err("export request sermonId does not match immutable snapshot".to_string());
+    }
+    let parsed = sermon::Sermon::parse(&snapshot.raw_source).map_err(err)?;
+    let core_request = core_export_request(request)?;
+    let output_path = export_output_path(vault, snapshot, request)?;
+    let outcome = export::export_sermon_with_id(
+        &parsed,
+        &snapshot.raw_source,
+        core_request,
+        &output_path,
+        Some(snapshot.snapshot_id.clone()),
+    );
+    match (outcome.success, outcome.result, outcome.error) {
+        (true, Some(result), _) => Ok(ExportResultDto {
+            success: true,
+            output_path: Some(result.output_path),
+            message: "Export completed successfully".to_string(),
+            format: export_format_name(result.format).to_string(),
+            snapshot_id: Some(result.export_id),
+            exported_at: Some(result.created_at),
+            file_size_bytes: Some(result.file_size),
+        }),
+        (_, _, error) => Err(error.unwrap_or_else(|| "export failed".to_string())),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Time helper (RFC 3339, UTC)
 // ---------------------------------------------------------------------------
 
@@ -1442,6 +1736,45 @@ mod tests {
     }
 
     #[test]
+    fn lint_transport_returns_real_track_e_findings() {
+        let (_tmp, vault, _db) = setup("lint-bridge");
+        let raw = "---\nid: lint-me\ntitle: \"Lint Me\"\n---\n\n:::movement{title=\"Unanchored\"}\nBody.\n:::\n";
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "lint-me.md", raw).unwrap();
+        let doc = document_from_raw(raw, "lint-me.md").unwrap();
+        let findings = lint_document(&vault, None, &doc).unwrap();
+        let rules: Vec<&str> = findings.iter().map(|finding| finding.rule_id.as_str()).collect();
+        assert!(rules.contains(&linter::RULE_MISSING_BIG_IDEA));
+        assert!(rules.contains(&linter::RULE_ORPHANED_MOVEMENT));
+        assert!(rules.contains(&linter::RULE_MISSING_APPLICATION));
+        assert!(findings.iter().all(|finding| finding.code == finding.rule_id));
+    }
+
+    #[test]
+    fn export_transport_uses_real_snapshot_and_track_d_pdf() {
+        let (_tmp, vault, db) = setup("export-bridge");
+        let (conn, _content) = seed(&vault, &db);
+        let snapshot = create_export_source_snapshot(&vault, &conn, "alpha").unwrap();
+        let output = vault.join("exports").join("alpha.pdf");
+        let request = ExportRequestDto {
+            sermon_id: "alpha".to_string(),
+            format: "pulpit_manuscript".to_string(),
+            manuscript_mode: Some("manuscript".to_string()),
+            options: ExportOptionsDto {
+                include_notes: Some(false),
+                output_filename: None,
+                output_path: Some(output.display().to_string()),
+            },
+            snapshot_id: Some(snapshot.snapshot_id.clone()),
+        };
+        let result = execute_export_snapshot(&vault, &snapshot, &request).unwrap();
+        assert!(result.success);
+        assert_eq!(result.snapshot_id.as_deref(), Some(snapshot.snapshot_id.as_str()));
+        assert_eq!(result.format, "pulpit_manuscript");
+        let pdf = std::fs::read(output).unwrap();
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
     fn rfc3339_format_is_stable() {
         assert_eq!(format_rfc3339(0), "1970-01-01T00:00:00Z");
         // 1970 is not a leap year: 365 days lands on 1971-01-01.
@@ -1476,7 +1809,7 @@ mod tests {
     #[test]
     fn recover_reports_no_copy_when_gone() {
         let (_tmp, vault, db) = setup("recover");
-        let (conn, _c) = seed(&vault, &db);
+        let (_conn, _c) = seed(&vault, &db);
         std::fs::remove_file(vault.join("alpha.md")).unwrap();
         reconcile::reconcile(&vault, &db).unwrap();
         let conn = indexer::open_pastor_db(&db).unwrap();

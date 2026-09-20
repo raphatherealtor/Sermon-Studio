@@ -645,25 +645,96 @@ pub struct IllustrationFatigueDto {
 }
 
 // ---------------------------------------------------------------------------
-// Export / lint (Track D / E seams — requests deserialize, execution is wired
-// at Wave 2 fan-in; until then commands return a typed not-linked error).
+// Export / lint transport. Business rules remain in sermon_core::export and
+// sermon_core::linter; these types only map their results to the frontend.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceRangeDto {
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LintFindingDto {
+    pub id: String,
+    pub severity: String,
+    pub rule_id: String,
+    /// Legacy frontend alias for ruleId.
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub movement_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_range: Option<SourceRangeDto>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportOptionsDto {
+    #[serde(default)]
+    pub include_notes: Option<bool>,
+    #[serde(default)]
+    pub output_filename: Option<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportRequestDto {
     #[serde(default)]
     pub sermon_id: String,
-    #[allow(dead_code)]
-    #[serde(flatten)]
-    pub _rest: serde_json::Value,
+    pub format: String,
+    #[serde(default)]
+    pub manuscript_mode: Option<String>,
+    #[serde(default)]
+    pub options: ExportOptionsDto,
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateExportSnapshotRequestDto {
     #[serde(default)]
     pub sermon_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSnapshotDto {
+    pub snapshot_id: String,
+    pub sermon_id: String,
+    pub sermon_title: String,
+    pub created_at: String,
+    pub revision_hash: String,
+    pub word_count: u32,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResultDto {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_path: Option<String>,
+    pub message: String,
+    pub format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exported_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size_bytes: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------

@@ -938,6 +938,22 @@ pub fn export_sermon(
     request: ExportRequest,
     output_path: &Path,
 ) -> ExportOutcome {
+    export_sermon_with_id(sermon, raw_source, request, output_path, None)
+}
+
+/// Export using an optional caller-created immutable source snapshot id.
+///
+/// Track F uses this when the frontend explicitly creates a source snapshot
+/// before selecting an export job. The rendering inputs and hashes are still
+/// produced here by Track D; only the stable identity is supplied by the
+/// caller so the transport can correlate snapshot creation and execution.
+pub fn export_sermon_with_id(
+    sermon: &Sermon,
+    raw_source: &str,
+    request: ExportRequest,
+    output_path: &Path,
+    export_id: Option<String>,
+) -> ExportOutcome {
     let application_version = env!("CARGO_PKG_VERSION").to_string();
 
     if let Err(e) = request.validate() {
@@ -978,7 +994,7 @@ pub fn export_sermon(
 
     // The snapshot is created BEFORE rendering and is never mutated afterwards.
     let snapshot = ExportSnapshot::new(
-        uuid::Uuid::new_v4().to_string(),
+        export_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         sermon_id,
         source_hash,
         template_id,

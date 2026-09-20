@@ -8,7 +8,7 @@
 //! Classification of the Rocket `SermonBackend` contract (see Track F report):
 //!   A — wired directly to a core capability
 //!   B — thin composition of existing core capabilities
-//!   C — Track D/E seam (typed "not yet linked" error, never fake success)
+//!   C — Track D/E capability through thin transport mapping
 //!   D — genuinely unsupported (typed unsupported error)
 
 use crate::core_api::{self, ApiResult, CreateSermonReq};
@@ -18,14 +18,9 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use tauri::State;
 
-/// Stable identifier for the not-yet-linked Track D/E seam. The Wave 2 fan-in
-/// replaces the bodies behind these commands with the real Track D/E calls;
-/// the marker string is part of the contract so the frontend can distinguish
-/// "feature not linked yet" from ordinary failures.
-pub const NOT_LINKED: &str = "not yet linked in this branch";
-
 /// All custom IPC command names, in adapter order. The unit test below checks
 /// that TauriSermonBackend.ts invokes exactly these names.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const COMMAND_NAMES: &[&str] = &[
     "list_sermons",
     "search_sermons",
@@ -77,10 +72,6 @@ pub const COMMAND_NAMES: &[&str] = &[
     "librarian_catalog",
     "librarian_related",
 ];
-
-fn now() -> String {
-    core_api::now_rfc3339()
-}
 
 // ---------------------------------------------------------------------------
 // Sermon list / archive (A/B)
@@ -248,7 +239,7 @@ pub fn pin_sermon(_state: State<AppState>, _id: String, _pinned: bool) -> ApiRes
 }
 
 // ---------------------------------------------------------------------------
-// References (A) and linting (C seam)
+// References (A) and linting (Track E through Track F transport)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -256,11 +247,18 @@ pub fn parse_references(text: String) -> ApiResult<Vec<dto::ReferenceMatchDto>> 
     Ok(dto::scan_references(&text))
 }
 
-/// C seam: Track E owns linting. This command compiles and is registered, but
-/// returns a typed not-linked error until the Wave 2 fan-in wires Track E.
 #[tauri::command]
-pub fn lint_sermon(_state: State<AppState>, _doc: serde_json::Value) -> ApiResult<Vec<serde_json::Value>> {
-    Err(format!("lint: {NOT_LINKED} (Track E owns linting)"))
+pub fn lint_sermon(
+    state: State<AppState>,
+    doc: dto::SermonDocumentDto,
+) -> ApiResult<Vec<dto::LintFindingDto>> {
+    let cfg = state.config.lock().unwrap().clone();
+    let pastor = state.pastor().ok();
+    core_api::lint_document(
+        &PathBuf::from(&cfg.vault_path),
+        pastor.as_ref(),
+        &doc,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -372,34 +370,74 @@ pub fn set_librarian_enabled(state: State<AppState>, enabled: bool) -> ApiResult
 }
 
 // ---------------------------------------------------------------------------
-// Export (C seams) / reveal (D)
+// Export (Track D through Track F transport) / reveal (D)
 // ---------------------------------------------------------------------------
 
-/// C seam: Track D owns export snapshots and rendering. Registered so the
-/// adapter contract is complete; returns a typed not-linked error until the
-/// Wave 2 fan-in wires Track D. Never fakes a successful export.
+fn create_snapshot(
+    state: &State<AppState>,
+    sermon_id: &str,
+) -> ApiResult<dto::ExportSnapshotDto> {
+    let cfg = state.config.lock().unwrap().clone();
+    let conn = state.pastor().map_err(|e| e.to_string())?;
+    let snapshot = core_api::create_export_source_snapshot(
+        &PathBuf::from(&cfg.vault_path),
+        &conn,
+        sermon_id,
+    )?;
+    let result = snapshot.to_dto();
+    state
+        .export_snapshots
+        .lock()
+        .unwrap()
+        .insert(snapshot.snapshot_id.clone(), snapshot);
+    Ok(result)
+}
+
+fn execute_export(
+    state: &State<AppState>,
+    request: &dto::ExportRequestDto,
+) -> ApiResult<dto::ExportResultDto> {
+    let snapshot_id = request
+        .snapshot_id
+        .as_deref()
+        .ok_or_else(|| "export request requires snapshotId".to_string())?;
+    let snapshot = state
+        .export_snapshots
+        .lock()
+        .unwrap()
+        .get(snapshot_id)
+        .cloned()
+        .ok_or_else(|| format!("export snapshot not found: {snapshot_id}"))?;
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::execute_export_snapshot(&PathBuf::from(&cfg.vault_path), &snapshot, request)
+}
+
 #[tauri::command]
 pub fn create_export_snapshot(
-    _state: State<AppState>,
-    _request: dto::CreateExportSnapshotRequestDto,
-) -> ApiResult<serde_json::Value> {
-    Err(format!("export snapshot: {NOT_LINKED} (Track D owns export)"))
+    state: State<AppState>,
+    request: dto::CreateExportSnapshotRequestDto,
+) -> ApiResult<dto::ExportSnapshotDto> {
+    create_snapshot(&state, &request.sermon_id)
 }
 
 #[tauri::command]
 pub fn execute_export_job(
-    _state: State<AppState>,
-    _request: serde_json::Value,
-) -> ApiResult<serde_json::Value> {
-    Err(format!("export: {NOT_LINKED} (Track D owns export)"))
+    state: State<AppState>,
+    request: dto::ExportRequestDto,
+) -> ApiResult<dto::ExportResultDto> {
+    execute_export(&state, &request)
 }
 
 #[tauri::command]
 pub fn export_sermon(
-    _state: State<AppState>,
-    _request: serde_json::Value,
-) -> ApiResult<serde_json::Value> {
-    Err(format!("export: {NOT_LINKED} (Track D owns export)"))
+    state: State<AppState>,
+    mut request: dto::ExportRequestDto,
+) -> ApiResult<dto::ExportResultDto> {
+    if request.snapshot_id.is_none() {
+        let snapshot = create_snapshot(&state, &request.sermon_id)?;
+        request.snapshot_id = Some(snapshot.snapshot_id);
+    }
+    execute_export(&state, &request)
 }
 
 /// D: file reveal needs a shell/opener integration that is intentionally not
@@ -743,24 +781,14 @@ mod tests {
     }
 
     #[test]
-    fn not_linked_marker_present_for_track_d_e_seams() {
-        assert!(NOT_LINKED.contains("not yet linked"));
-        // Seam commands are registered in the handler list (checked in
-        // lib.rs), and every seam command body references the marker.
+    fn wave_two_lint_and_export_commands_are_linked() {
         let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/commands.rs"))
             .unwrap();
         for cmd in ["lint_sermon", "create_export_snapshot", "execute_export_job", "export_sermon"] {
-            // Each seam command function must exist and mention the marker or
-            // an unsupported rationale.
-            let pos = src.find(&format!("pub fn {cmd}")).unwrap_or_else(|| panic!("{cmd} missing"));
-            let body = &src[pos..pos + 400];
-            assert!(
-                body.contains(NOT_LINKED)
-                    || body.contains("{NOT_LINKED}")
-                    || body.contains("unsupported"),
-                "{cmd} must fail honestly"
-            );
+            assert!(src.contains(&format!("pub fn {cmd}")), "{cmd} missing");
         }
+        assert!(src.contains("core_api::lint_document"));
+        assert!(src.contains("core_api::execute_export_snapshot"));
     }
 
     #[test]

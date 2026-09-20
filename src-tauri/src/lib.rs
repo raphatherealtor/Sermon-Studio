@@ -18,6 +18,7 @@ mod dto;
 use config::AppConfig;
 use core_api::SessionBaselines;
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -27,6 +28,9 @@ pub struct AppState {
     /// What the editor loaded/saved this session, keyed by sermon id — the
     /// local side of Track C's editor-vs-disk conflict evaluation.
     pub baselines: Mutex<SessionBaselines>,
+    /// Immutable canonical source captured by create_export_snapshot and used
+    /// by the subsequent Track D render command.
+    pub export_snapshots: Mutex<HashMap<String, core_api::ExportSourceSnapshot>>,
 }
 
 impl AppState {
@@ -87,6 +91,7 @@ pub fn run() {
             config: Mutex::new(cfg),
             config_path,
             baselines: Mutex::new(SessionBaselines::default()),
+            export_snapshots: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             // ── Rocket contract surface (Track F) ──────────────────────────

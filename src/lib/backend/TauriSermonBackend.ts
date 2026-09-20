@@ -7,8 +7,7 @@
 // - BackendUnavailableError: not running inside the Tauri runtime (browser or
 //   static preview). The app must fall back to MockSermonBackend.
 // - BackendCommandError: the native command failed; `code` is 'unsupported'
-//   for typed unsupported errors and 'not-linked' for the Track D/E seams
-//   (lint/export) — these NEVER report fake success.
+//   for typed unsupported errors and 'command-failed' otherwise.
 // - Command names and payload casing match the Rust side exactly
 //   (snake_case commands, camelCase payload fields).
 
@@ -50,7 +49,7 @@ import type {
 // Dynamic import isolates Tauri dependency from the browser bundle.
 // This file must never be imported by React components directly.
 
-export type BackendErrorCode = 'unavailable' | 'unsupported' | 'not-linked' | 'command-failed';
+export type BackendErrorCode = 'unavailable' | 'unsupported' | 'command-failed';
 
 export class BackendUnavailableError extends Error {
   readonly code: BackendErrorCode = 'unavailable';
@@ -77,8 +76,6 @@ export class BackendCommandError extends Error {
     this.command = command;
     if (message.startsWith('unsupported:')) {
       this.code = 'unsupported';
-    } else if (message.includes('not yet linked in this branch')) {
-      this.code = 'not-linked';
     } else {
       this.code = 'command-failed';
     }

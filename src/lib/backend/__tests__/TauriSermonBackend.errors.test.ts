@@ -110,8 +110,8 @@ describe('backend error mapping', () => {
     });
   });
 
-  it('Track D/E seams surface as not-linked, not success', async () => {
-    mockInvoke.mockRejectedValue('export: not yet linked in this branch (Track D owns export)');
+  it('export failures carry command context', async () => {
+    mockInvoke.mockRejectedValue('generated PDF failed validation');
     const backend = new TauriSermonBackend();
     const failure = backend.exportSermon({
       sermonId: 's1',
@@ -119,7 +119,10 @@ describe('backend error mapping', () => {
       options: {},
     });
     await expect(failure).rejects.toBeInstanceOf(BackendCommandError);
-    await expect(failure).rejects.toMatchObject({ code: 'not-linked' });
+    await expect(failure).rejects.toMatchObject({
+      code: 'command-failed',
+      command: 'export_sermon',
+    });
   });
 
   it('ordinary failures carry command context', async () => {
