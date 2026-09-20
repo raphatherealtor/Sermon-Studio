@@ -1,0 +1,307 @@
+/* Sermon Studio — high-contrast, keyboard-first, zero-modal UI.
+   Dark by default for long writing sessions and low eye strain. */
+
+:root {
+  --bg: #0e1116;
+  --bg-panel: #151a21;
+  --bg-elev: #1b222c;
+  --bg-input: #0b0e13;
+  --fg: #e8edf4;
+  --fg-dim: #9aa7b8;
+  --fg-faint: #5f6b7c;
+  --accent: #6ea8fe;
+  --accent-2: #7ee0b8;
+  --warn: #f0b429;
+  --danger: #ff6b6b;
+  --border: #263041;
+  --border-strong: #38455c;
+  --sel: #2b3a55;
+  --scripture: #d7e3ff;
+  --mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", monospace;
+  --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --sans: "Inter", "Cantarell", "DejaVu Sans", system-ui, sans-serif;
+  --fs: 17px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: var(--fs);
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 300px 1fr 360px;
+  grid-template-rows: 40px 1fr 26px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left   center right"
+    "status status status";
+  height: 100vh;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+.topbar .brand {
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--accent);
+  margin-right: 8px;
+}
+.topbar .spacer { flex: 1; }
+.topbar button, .topbar .chip { -webkit-app-region: no-drag; }
+
+.chip {
+  font-size: 12px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.chip.on { color: var(--accent-2); border-color: var(--accent-2); }
+
+/* ---------- Panels ---------- */
+.panel {
+  background: var(--bg-panel);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.left { grid-area: left; border-right: 1px solid var(--border); }
+.right { grid-area: right; border-left: 1px solid var(--border); }
+.center { grid-area: center; display: flex; flex-direction: column; min-width: 0; }
+
+.panel h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--fg-faint);
+  margin: 14px 12px 6px;
+  font-weight: 700;
+}
+
+/* ---------- Buttons & inputs ---------- */
+button {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover { background: var(--sel); border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); color: #06101f; border-color: var(--accent); font-weight: 600; }
+button.ghost { background: transparent; border-color: transparent; color: var(--fg-dim); }
+button.ghost:hover { color: var(--fg); background: var(--bg-elev); }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(110, 168, 254, 0.18);
+}
+
+/* ---------- Sermon list ---------- */
+.search-wrap { padding: 8px 12px; }
+.sermon-list { list-style: none; margin: 0; padding: 0 6px 20px; }
+.sermon-list li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.sermon-list li:hover { background: var(--bg-elev); }
+.sermon-list li.active { background: var(--sel); border-color: var(--accent); }
+.sermon-list .t { font-weight: 600; font-size: 14px; }
+.sermon-list .m { font-size: 11.5px; color: var(--fg-dim); margin-top: 2px; }
+.sermon-list .p { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
+.sermon-list .snip { font-size: 11.5px; color: var(--fg-faint); margin-top: 4px; line-height: 1.35; }
+.sermon-list .snip mark { background: transparent; color: var(--warn); font-weight: 700; }
+
+/* ---------- Editor ---------- */
+.meta-bar {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.meta-bar .field { display: flex; flex-direction: column; gap: 3px; }
+.meta-bar label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--fg-faint); }
+.meta-bar .wide { grid-column: span 2; }
+
+.editor-scroll { flex: 1; overflow-y: auto; }
+.editor {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 40px 120px;
+  font-family: var(--serif);
+  font-size: calc(var(--fs) + 2px);
+  line-height: 1.7;
+  color: var(--fg);
+  min-height: 100%;
+}
+.editor:focus { outline: none; }
+.editor h1 { font-size: 1.7em; margin: 0.2em 0 0.6em; }
+.editor h2 { font-size: 1.25em; color: var(--accent); margin: 1.4em 0 0.4em; }
+.editor h3 { font-size: 1.05em; color: var(--accent-2); }
+.editor blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 14px;
+  color: var(--scripture);
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+.editor p { margin: 0.5em 0; }
+.editor ul, .editor ol { padding-left: 1.4em; }
+.editor code { font-family: var(--mono); background: var(--bg-elev); padding: 1px 4px; border-radius: 4px; }
+.editor .is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--fg-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ---------- Right study panel ---------- */
+.study-section { padding: 0 12px 14px; }
+.verse {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--scripture);
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.verse .ref { color: var(--accent-2); font-weight: 700; margin-right: 6px; }
+
+.words { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.word {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.word:hover { border-color: var(--accent); }
+.word .s { color: var(--accent); font-size: 10px; margin-left: 3px; }
+
+.lex {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+.lex .lemma { font-size: 22px; color: var(--accent-2); }
+.lex .translit { color: var(--fg-dim); font-style: italic; margin-left: 8px; }
+.lex .gloss { color: var(--fg); margin-top: 6px; }
+.lex .def { color: var(--fg-dim); font-size: 12.5px; margin-top: 4px; }
+.lex .deriv { color: var(--fg-faint); font-size: 12px; margin-top: 4px; font-family: var(--mono); }
+
+.xref { font-size: 12.5px; padding: 4px 0; border-bottom: 1px dashed var(--border); cursor: pointer; }
+.xref:hover { color: var(--accent); }
+.xref .rank { color: var(--warn); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+
+.hit { font-size: 12.5px; padding: 5px 0; border-bottom: 1px dashed var(--border); cursor: pointer; }
+.hit:hover { color: var(--accent); }
+.hit .d { color: var(--fg-faint); font-family: var(--mono); font-size: 11px; }
+
+.fatigue { font-size: 12.5px; padding: 4px 0; }
+.fatigue .n { color: var(--danger); font-weight: 700; font-family: var(--mono); }
+
+.empty { color: var(--fg-faint); font-size: 12.5px; padding: 6px 0; font-style: italic; }
+
+/* ---------- Status bar ---------- */
+.statusbar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+}
+.statusbar .ok { color: var(--accent-2); }
+.statusbar .warn { color: var(--warn); }
+.statusbar .spacer { flex: 1; }
+
+/* ---------- Toast (non-modal) ---------- */
+#toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 100;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- Command palette (keyboard, non-modal overlay) ---------- */
+#palette {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 560px;
+  max-width: 90vw;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  display: none;
+  z-index: 200;
+  overflow: hidden;
+}
+#palette.open { display: block; }
+#palette input { border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 12px 14px; font-size: 15px; }
+#palette ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
+#palette li { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13.5px; display: flex; justify-content: space-between; }
+#palette li.sel { background: var(--sel); }
+#palette li .k { color: var(--fg-faint); font-family: var(--mono); font-size: 11px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }

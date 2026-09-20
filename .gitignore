@@ -40,3 +40,15 @@ turbo/
 .env.local
 .env.*
 !.env.example
+
+# Original Rust workspace and legacy UI build output
+/target/
+**/*.rs.bk
+Cargo.lock.orig
+/ui/dist/
+/src-tauri/gen/
+/data/raw/
+/data/clean/
+/data/*.db
+/generated_images/
+*.log

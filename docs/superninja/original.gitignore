@@ -1,0 +1,17 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# Node
+ui/node_modules
+ui/dist
+
+# Data (large; rebuilt from public-domain sources)
+data/raw
+data/clean
+data/*.db
+
+# Generated
+generated_images
+*.log

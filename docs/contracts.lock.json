@@ -1,0 +1,73 @@
+{
+  "description": "Initial shared contract source baseline; changes require coordinated review",
+  "files": [
+    {
+      "path": "crates/core/src/reference.rs",
+      "gitBlob": "caa358535d96db8f009430cedfd36197b60c9b74"
+    },
+    {
+      "path": "crates/core/src/sermon.rs",
+      "gitBlob": "715fcd03f50c07a666890e622027aec2942cf30c"
+    },
+    {
+      "path": "crates/core/src/indexer.rs",
+      "gitBlob": "c26d75c458c826800dc3f69965260573ae5d5151"
+    },
+    {
+      "path": "crates/core/src/retrieval.rs",
+      "gitBlob": "9b1192ffffeca8b7c07446a0fc1259d342dffc2b"
+    },
+    {
+      "path": "crates/core/src/schema.rs",
+      "gitBlob": "2c9a645f82e4030f19b1f6c967b2dcdd7e69e9c5"
+    },
+    {
+      "path": "crates/core/src/schema.sql",
+      "gitBlob": "ad95709536e257efb633dcc110af83fb15ffc068"
+    },
+    {
+      "path": "crates/core/src/error.rs",
+      "gitBlob": "97431fc92584cd00de8a0f6a4f565d12b061bca4"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "gitBlob": "d03f62a1cb86378720040e8e82c715adbfb38c1f"
+    },
+    {
+      "path": "src-tauri/src/commands.rs",
+      "gitBlob": "140941435053cca735356fade80d786e6425a4c9"
+    },
+    {
+      "path": "src-tauri/src/config.rs",
+      "gitBlob": "f9d5178c65974a8bb30d654ff4338ffba439e5cd"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "gitBlob": "0f6f1895055df510ad12ba80f7ccab4b5e43ab44"
+    },
+    {
+      "path": "src/lib/backend/SermonBackend.ts",
+      "gitBlob": "a5e955bb5ff9033e1e4e94611db8fa7ed66864c2"
+    },
+    {
+      "path": "src/lib/backend/types.ts",
+      "gitBlob": "bef9856a1c2b36e8388121de11113c24f9352bc7"
+    },
+    {
+      "path": "src/lib/backend/TauriSermonBackend.ts",
+      "gitBlob": "b52d399ce06f3df0151f000ec71643a6f1b2057c"
+    },
+    {
+      "path": "src/editor/codec/directiveCodec.ts",
+      "gitBlob": "beb6aa6760480597895c926b60e10acc9e68162e"
+    },
+    {
+      "path": "Cargo.toml",
+      "gitBlob": "f16c964a45177edf65d8f54c08cef120238203d4"
+    },
+    {
+      "path": "Cargo.lock",
+      "gitBlob": "51eafbc0f977c9d3eaf011ee422faaf358fb9323"
+    }
+  ]
+}

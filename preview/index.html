@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sermon Studio — UI Preview</title>
+<style>
+:root{
+  --bg:#0e1116;--bg-panel:#151a21;--bg-elev:#1b222c;--bg-input:#0b0e13;
+  --fg:#e8edf4;--fg-dim:#9aa7b8;--fg-faint:#5f6b7c;--accent:#6ea8fe;
+  --accent-2:#7ee0b8;--warn:#f0b429;--danger:#ff6b6b;--border:#263041;
+  --border-strong:#38455c;--sel:#2b3a55;--scripture:#d7e3ff;
+  --mono:"JetBrains Mono","Fira Code","DejaVu Sans Mono",monospace;
+  --serif:"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --sans:"Inter","Cantarell","DejaVu Sans",system-ui,sans-serif;--fs:17px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:var(--fs);overflow:hidden}
+#app{display:grid;grid-template-columns:300px 1fr 360px;grid-template-rows:40px 1fr 26px;
+  grid-template-areas:"topbar topbar topbar" "left center right" "status status status";height:100vh}
+.topbar{grid-area:topbar;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg-panel);border-bottom:1px solid var(--border)}
+.topbar .brand{font-weight:700;letter-spacing:.4px;color:var(--accent);margin-right:8px}
+.topbar .spacer{flex:1}
+.chip{font-size:12px;color:var(--fg-dim);border:1px solid var(--border);border-radius:999px;padding:2px 10px}
+.chip.on{color:var(--accent-2);border-color:var(--accent-2)}
+.panel{background:var(--bg-panel);overflow-y:auto;overflow-x:hidden}
+.left{grid-area:left;border-right:1px solid var(--border)}
+.right{grid-area:right;border-left:1px solid var(--border)}
+.center{grid-area:center;display:flex;flex-direction:column;min-width:0}
+.panel h2{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--fg-faint);margin:14px 12px 6px;font-weight:700}
+button{font-family:inherit;font-size:13px;color:var(--fg);background:var(--bg-elev);border:1px solid var(--border-strong);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{background:var(--sel);border-color:var(--accent)}
+input,select{font-family:inherit;font-size:13px;color:var(--fg);background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:6px 8px;width:100%}
+.search-wrap{padding:8px 12px}
+.sermon-list{list-style:none;margin:0;padding:0 6px 20px}
+.sermon-list li{padding:8px 10px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.sermon-list li:hover{background:var(--bg-elev)}
+.sermon-list li.active{background:var(--sel);border-color:var(--accent)}
+.sermon-list .t{font-weight:600;font-size:14px}
+.sermon-list .m{font-size:11.5px;color:var(--fg-dim);margin-top:2px}
+.sermon-list .p{font-family:var(--mono);font-size:11px;color:var(--accent-2)}
+.sermon-list .snip{font-size:11.5px;color:var(--fg-faint);margin-top:4px;line-height:1.35}
+.sermon-list .snip mark{background:transparent;color:var(--warn);font-weight:700}
+.meta-bar{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-panel)}
+.meta-bar .field{display:flex;flex-direction:column;gap:3px}
+.meta-bar label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--fg-faint)}
+.meta-bar .wide{grid-column:span 2}
+.editor-scroll{flex:1;overflow-y:auto}
+.editor{max-width:760px;margin:0 auto;padding:28px 40px 120px;font-family:var(--serif);font-size:calc(var(--fs) + 2px);line-height:1.7;color:var(--fg);min-height:100%}
+.editor h1{font-size:1.7em;margin:.2em 0 .6em}
+.editor h2{font-size:1.25em;color:var(--accent);margin:1.4em 0 .4em}
+.editor h3{font-size:1.05em;color:var(--accent-2)}
+.editor blockquote{border-left:3px solid var(--accent);margin:.6em 0;padding:.2em 0 .2em 14px;color:var(--scripture);font-family:var(--mono);font-size:.92em}
+.editor p{margin:.5em 0}
+.editor ul{padding-left:1.4em}
+.study-section{padding:0 12px 14px}
+.verse{font-family:var(--mono);font-size:13px;line-height:1.55;color:var(--scripture);padding:6px 0;border-bottom:1px dashed var(--border)}
+.verse .ref{color:var(--accent-2);font-weight:700;margin-right:6px}
+.words{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.word{font-family:var(--mono);font-size:12px;padding:2px 6px;border-radius:5px;background:var(--bg-elev);border:1px solid var(--border);cursor:pointer}
+.word:hover{border-color:var(--accent)}
+.word .s{color:var(--accent);font-size:10px;margin-left:3px}
+.lex{margin-top:10px;padding:10px;background:var(--bg-elev);border:1px solid var(--border-strong);border-radius:8px}
+.lex .lemma{font-size:22px;color:var(--accent-2)}
+.lex .translit{color:var(--fg-dim);font-style:italic;margin-left:8px}
+.lex .gloss{color:var(--fg);margin-top:6px}
+.lex .def{color:var(--fg-dim);font-size:12.5px;margin-top:4px}
+.lex .deriv{color:var(--fg-faint);font-size:12px;margin-top:4px;font-family:var(--mono)}
+.xref{font-size:12.5px;padding:4px 0;border-bottom:1px dashed var(--border);cursor:pointer}
+.xref:hover{color:var(--accent)}
+.xref .rank{color:var(--warn);font-family:var(--mono);font-size:11px;margin-right:6px}
+.hit{font-size:12.5px;padding:5px 0;border-bottom:1px dashed var(--border);cursor:pointer}
+.hit:hover{color:var(--accent)}
+.hit .d{color:var(--fg-faint);font-family:var(--mono);font-size:11px}
+.statusbar{grid-area:status;display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11.5px;color:var(--fg-dim);background:var(--bg-panel);border-top:1px solid var(--border);font-family:var(--mono)}
+.statusbar .ok{color:var(--accent-2)}
+.statusbar .spacer{flex:1}
+#toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg-elev);border:1px solid var(--accent);color:var(--fg);padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:100}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#palette{position:fixed;top:12%;left:50%;transform:translateX(-50%);width:560px;max-width:90vw;background:var(--bg-elev);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;z-index:200;overflow:hidden}
+#palette.open{display:block}
+#palette input{border:none;border-bottom:1px solid var(--border);border-radius:0;padding:12px 14px;font-size:15px}
+#palette ul{list-style:none;margin:0;padding:6px;max-height:320px;overflow-y:auto}
+#palette li{padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13.5px;display:flex;justify-content:space-between}
+#palette li.sel{background:var(--sel)}
+#palette li .k{color:var(--fg-faint);font-family:var(--mono);font-size:11px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+.banner{position:fixed;top:0;left:0;right:0;z-index:300;background:var(--warn);color:#1a1200;font-size:12px;text-align:center;padding:3px;font-family:var(--mono)}
+</style>
+<script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+<div class="banner">STATIC PREVIEW — sample data, no backend. The real app is the Tauri desktop build.</div>
+<div id="app" style="padding-top:22px">
+  <div class="topbar">
+    <span class="brand">Sermon Studio</span>
+    <button>New</button><button>Save</button><button>Rebuild Index</button>
+    <span class="spacer"></span>
+    <span class="chip">Librarian: off</span>
+    <span class="chip">~/Sermons</span>
+  </div>
+
+  <aside class="panel left">
+    <div class="search-wrap"><input type="search" placeholder="Search sermons…  (Ctrl+K)" /></div>
+    <h2>Archive</h2>
+    <ul class="sermon-list">
+      <li class="active"><div class="t">Groaning for Glory</div><div class="m"><span class="p">Rom.8.28-Rom.8.30</span>  ·  2024-07-14  ·  Romans: No Condemnation</div></li>
+      <li><div class="t">The Shepherd Who Leads</div><div class="m"><span class="p">Ps.23.1-Ps.23.6</span>  ·  2022-05-01</div><div class="snip">…the Lord is my <mark>shepherd</mark>; I shall not want…</div></li>
+      <li><div class="t">The Grace That Saves</div><div class="m"><span class="p">Eph.2.8-Eph.2.9</span>  ·  2024-03-10  ·  Ephesians: Riches in Christ</div></li>
+      <li><div class="t">The Potter and the Clay</div><div class="m"><span class="p">Jer.18.1-Jer.18.6</span>  ·  2023-11-05</div></li>
+      <li><div class="t">A Lamp to My Feet</div><div class="m"><span class="p">Ps.119.105-Ps.119.105</span>  ·  2023-08-20</div></li>
+      <li><div class="t">The Vine and the Branches</div><div class="m"><span class="p">John.15.1-John.15.8</span>  ·  2023-04-02</div></li>
+      <li><div class="t">The Prodigal Son</div><div class="m"><span class="p">Luke.15.11-Luke.15.32</span>  ·  2022-09-18</div></li>
+    </ul>
+  </aside>
+
+  <main class="center">
+    <div class="meta-bar">
+      <div class="field wide"><label>Title</label><input value="Groaning for Glory" /></div>
+      <div class="field"><label>Date</label><input value="2024-07-14" /></div>
+      <div class="field"><label>Series</label><input value="Romans: No Condemnation" /></div>
+      <div class="field"><label>Season</label><input value="Ordinary Time" /></div>
+      <div class="field"><label>Primary Passage</label><input value="Rom 8:28-30" /></div>
+      <div class="field"><label>Structure</label><select><option>verse_by_verse</option><option>narrative</option><option>deductive</option></select></div>
+      <div class="field wide"><label>Big Idea</label><input value="God's purpose holds every groan of the saints." /></div>
+      <div class="field wide"><label>Exegetical Proposition</label><input value="All things work together for good to those who love God." /></div>
+    </div>
+    <div class="editor-scroll">
+      <div class="editor">
+        <h1>Groaning for Glory</h1>
+        <h2>Text</h2>
+        <blockquote>Romans 8:28 — And we know that all things work together for good to them that love God, to them who are the called according to his purpose.</blockquote>
+        <h2>Exegetical Proposition</h2>
+        <p>Paul does not promise that all things are good, but that God works all things together for good for those who are called according to His purpose.</p>
+        <h2>Big Idea</h2>
+        <p>God's purpose holds every groan of the saints.</p>
+        <h2>Outline</h2>
+        <ul>
+          <li>The certainty of the promise — "we know"</li>
+          <li>The scope of the promise — "all things"</li>
+          <li>The recipients of the promise — "them that love God"</li>
+          <li>The ground of the promise — "his purpose"</li>
+        </ul>
+        <h2>Body</h2>
+        <p>The word <em>συνεργεῖ</em> (G4903) carries the sense of a co-working, a weaving together. Paul is not a fatalist; he is a weaver. The shuttle of providence passes over threads of joy and threads of grief alike, and the pattern is only visible from the finished side.</p>
+        <h2>Application</h2>
+        <p>Name the thread you are holding today. You cannot see the pattern. But the Weaver can.</p>
+      </div>
+    </div>
+  </main>
+
+  <aside class="panel right">
+    <h2>Study</h2>
+    <div class="study-section">
+      <h2>Passage</h2>
+      <div class="verse"><span class="ref">Romans 8:28</span>And we know that all things work together for good to them that love God, to them who are the called according to his purpose.</div>
+      <div class="verse"><span class="ref">Romans 8:29</span>For whom he did foreknow, he also did predestinate to be conformed to the image of his Son.</div>
+      <div class="verse"><span class="ref">Romans 8:30</span>Moreover whom he did predestinate, them he also called: and whom he called, them he also justified.</div>
+
+      <h2>Interlinear (Strong's)</h2>
+      <div class="words">
+        <span class="word">And<span class="s">G1161</span></span>
+        <span class="word">we</span>
+        <span class="word">know<span class="s">G1492</span></span>
+        <span class="word">that</span>
+        <span class="word">all</span>
+        <span class="word">things<span class="s">G3956</span></span>
+        <span class="word">work<span class="s">G4903</span></span>
+        <span class="word">together<span class="s">G4903</span></span>
+        <span class="word">for<span class="s">G1519</span></span>
+        <span class="word">good<span class="s">G18</span></span>
+        <span class="word">love<span class="s">G25</span></span>
+        <span class="word">God<span class="s">G2316</span></span>
+        <span class="word">called<span class="s">G2822</span></span>
+        <span class="word">purpose</span>
+      </div>
+      <div class="lex">
+        <div><span class="lemma">ἀγάπη</span><span class="translit">agápē</span></div>
+        <div class="gloss">(feast of) charity(-ably), dear, love</div>
+        <div class="def">love, i.e. affection or benevolence; specially (plural) a love-feast</div>
+        <div class="deriv">from G25 (ἀγαπάω);</div>
+        <div class="deriv">G26 · NT</div>
+      </div>
+
+      <h2>Cross References</h2>
+      <div class="xref"><span class="rank">496</span>1 Peter 5:10</div>
+      <div class="xref"><span class="rank">396</span>James 1:12</div>
+      <div class="xref"><span class="rank">320</span>Genesis 50:20</div>
+      <div class="xref"><span class="rank">225</span>1 Corinthians 2:9</div>
+      <div class="xref"><span class="rank">144</span>Romans 8:30</div>
+
+      <h2>Preached On This Text</h2>
+      <div class="hit">Groaning for Glory  <span class="d">2024-07-14</span></div>
+      <div class="hit">No Condemnation  <span class="d">2021-02-07</span></div>
+    </div>
+  </aside>
+
+  <div class="statusbar">
+    <span>vault: ~/Sermons</span>
+    <span>203 sermons</span>
+    <span class="spacer"></span>
+    <span class="ok">ready</span>
+    <span>saved</span>
+  </div>
+</div>
+
+<div id="toast">Saved</div>
+<div id="palette">
+  <input placeholder="Type a command…" />
+  <ul>
+    <li class="sel"><span>New Sermon</span><span class="k">Ctrl+N</span></li>
+    <li><span>Save</span><span class="k">Ctrl+S</span></li>
+    <li><span>Rebuild Index from Disk</span><span class="k"></span></li>
+    <li><span>Sync Index (incremental)</span><span class="k"></span></li>
+    <li><span>Focus Search</span><span class="k">Ctrl+K</span></li>
+    <li><span>Toggle Librarian (offline cataloger)</span><span class="k"></span></li>
+    <li><span>Show Illustration Fatigue</span><span class="k"></span></li>
+    <li><span>Archive Statistics</span><span class="k"></span></li>
+  </ul>
+</div>
+<script>
+  // Light interactivity so the preview feels alive.
+  const toast=document.getElementById('toast');
+  function showToast(m){toast.textContent=m;toast.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toast.classList.remove('show'),1600);}
+  document.querySelectorAll('.sermon-list li').forEach(li=>li.addEventListener('click',()=>{
+    document.querySelectorAll('.sermon-list li').forEach(x=>x.classList.remove('active'));
+    li.classList.add('active');
+  }));
+  document.querySelectorAll('.word').forEach(w=>w.addEventListener('click',()=>showToast('Lexicon: '+(w.querySelector('.s')?.textContent||w.textContent))));
+  document.querySelectorAll('.xref').forEach(x=>x.addEventListener('click',()=>showToast('Search: '+x.textContent.trim())));
+  window.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='p'){e.preventDefault();document.getElementById('palette').classList.toggle('open');}
+    if(e.key==='Escape'){document.getElementById('palette').classList.remove('open');}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();showToast('Saved');}
+  });
+</script>
+</body>
+</html>
