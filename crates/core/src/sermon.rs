@@ -508,6 +508,10 @@ pub struct Sermon {
     pub blocks: Vec<Block>,
     /// Verbatim YAML frontmatter source, kept for archival round-trip.
     frontmatter_raw: String,
+    /// Line ending used by the frontmatter delimiters. The YAML and body are
+    /// already retained verbatim, so preserving this keeps CRLF documents
+    /// byte-exact as well.
+    frontmatter_line_ending: String,
     has_frontmatter: bool,
 }
 
@@ -525,6 +529,15 @@ impl Sermon {
             meta,
             blocks: parse_blocks(body),
             frontmatter_raw: fm_str.to_string(),
+            frontmatter_line_ending: if raw
+                .strip_prefix('\u{feff}')
+                .unwrap_or(raw)
+                .starts_with("---\r\n")
+            {
+                "\r\n".to_string()
+            } else {
+                "\n".to_string()
+            },
             has_frontmatter,
         })
     }
@@ -539,7 +552,8 @@ impl Sermon {
             body.push_str(&block.to_markdown());
         }
         if self.has_frontmatter {
-            format!("---\n{}---\n{}", self.frontmatter_raw, body)
+            let newline = &self.frontmatter_line_ending;
+            format!("---{newline}{}---{newline}{}", self.frontmatter_raw, body)
         } else {
             body
         }
