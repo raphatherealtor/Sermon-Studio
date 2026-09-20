@@ -18,13 +18,10 @@ import type { ParsedDirective, CodecRoundTripResult } from '@/lib/backend/types'
 
 /** Directive names recognized by the frontend for specialized rendering. */
 const KNOWN_DIRECTIVES = new Set([
-  'big-idea',
-  'application',
-  'illustration',
-  'note',
-  'scripture',
   'movement',
-  'warrant',
+  'illustration',
+  'application',
+  'exegetical-notes',
 ]);
 
 /**
@@ -62,12 +59,16 @@ export function parseDirectives(input: string): ParsedDirective[] {
 
 /**
  * Serialize an array of ParsedDirective objects back to directive Markdown.
- * Unknown directives are reconstructed from their parsed name, attributes, and body —
- * preserving all attributes and body content verbatim.
+ * Unknown directives are emitted from their rawSource verbatim for byte-for-byte
+ * preservation. Known directives are reconstructed from parsed parts.
  */
 export function serializeDirectives(directives: ParsedDirective[]): string {
   return directives
     .map((d) => {
+      if (d.kind === 'unknown') {
+        // Byte-for-byte preservation: emit the original source unchanged
+        return d.rawSource;
+      }
       const attrStr = Object.entries(d.attributes)
         .map(([k, v]) => `${k}="${v}"`)
         .join(' ');
