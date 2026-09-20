@@ -16,15 +16,18 @@
 //! Nothing here touches the network. There is no telemetry. The `.md` files are
 //! canonical; both databases can be deleted and rebuilt from disk.
 
+pub mod atomic_save;
 pub mod books;
 pub mod canon;
 pub mod error;
 pub mod indexer;
 pub mod librarian;
+pub mod reconcile;
 pub mod reference;
 pub mod retrieval;
 pub mod schema;
 pub mod sermon;
+pub mod vault_watcher;
 
 pub use error::{CoreError, Result};
 pub use reference::{PassageRef, VerseRef};
