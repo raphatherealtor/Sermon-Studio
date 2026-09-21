@@ -23,10 +23,10 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let home = home_dir();
         let data_dir = dirs_data_dir();
         AppConfig {
-            vault_path: format!("{}/Sermons", home),
+            vault_path: home.join("Sermons").to_string_lossy().to_string(),
             canon_path: data_dir.join("canon.db").to_string_lossy().to_string(),
             pastor_path: data_dir.join("pastor.db").to_string_lossy().to_string(),
             librarian_enabled: false,
@@ -36,10 +36,28 @@ impl Default for AppConfig {
     }
 }
 
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from)
+}
+
+fn home_dir() -> PathBuf {
+    env_path("HOME")
+        .or_else(|| env_path("USERPROFILE"))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub(crate) fn dirs_config_dir() -> PathBuf {
+    env_path("XDG_CONFIG_HOME")
+        .or_else(|| env_path("APPDATA"))
+        .unwrap_or_else(|| home_dir().join(".config"))
+        .join("sermon-studio")
+}
+
 fn dirs_data_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let base = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home));
-    PathBuf::from(base).join("sermon-studio")
+    env_path("XDG_DATA_HOME")
+        .or_else(|| env_path("LOCALAPPDATA"))
+        .unwrap_or_else(|| home_dir().join(".local").join("share"))
+        .join("sermon-studio")
 }
 
 impl AppConfig {

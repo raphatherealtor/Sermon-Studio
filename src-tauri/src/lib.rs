@@ -1,6 +1,6 @@
 //! Sermon Studio — Tauri 2.0 application entry point.
 //!
-//! Offline, Linux-native. No network, no telemetry, no runtime cloud deps.
+//! Offline desktop application. No network, no telemetry, no runtime cloud deps.
 //! The Librarian (optional local cataloger) is off by default.
 //!
 //! Track F wiring: startup maintenance ([`sermon_core::reconcile`]) is
@@ -150,9 +150,7 @@ pub fn run() {
 }
 
 fn config_file_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let base = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
-    PathBuf::from(base).join("sermon-studio").join("config.json")
+    config::dirs_config_dir().join("config.json")
 }
 
 #[cfg(test)]
