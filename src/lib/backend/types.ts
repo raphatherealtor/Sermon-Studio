@@ -35,7 +35,7 @@ export interface SermonDocument {
   series: string | null;
   seriesIndex?: number;
   status: SermonStatus;
-  body: string; // HTML from TipTap — directive transport codec preserves unknown directives
+  body: string; // canonical Markdown (prose + ::: directive fences) — the TipTap markdown transport renders/edits it; frontmatter is backend-owned
   outline: OutlineNode[];
   tags: string[];
   createdAt: string;

@@ -368,11 +368,13 @@ pub fn load_sermon(vault: &Path, rel_path: &str) -> ApiResult<(SermonDocumentDto
 /// if the disk file differs from both the incoming buffer and the session
 /// baseline, a conflict result is returned and the file is left untouched.
 ///
-/// The transport contract declares `SermonDocument.body` as TipTap HTML
-/// (`types.ts`), but the canonical on-disk sermon is Markdown. Persisting an
-/// HTML body would silently strip frontmatter and directives (and churn the
-/// sermon identity on the next parse), so [`ensure_canonical_markdown`]
-/// refuses before any byte reaches the disk.
+/// Transport contract: `SermonDocument.body` is the canonical **Markdown**
+/// body (prose + `:::` directive fences). Frontmatter and sermon identity are
+/// owned by the backend: the body is spliced into the splice source — current
+/// disk raw, else the session baseline content, else the body alone for a
+/// never-existed file — via [`replace_document_body`], so a prose-only edit
+/// can never strip frontmatter or directives. [`ensure_canonical_markdown`]
+/// refuses block-level HTML before any byte reaches the disk.
 pub fn save_sermon(
     vault: &Path,
     conn: &mut Connection,
@@ -386,6 +388,18 @@ pub fn save_sermon(
     let body = doc.body.clone();
     ensure_canonical_markdown(&body)?;
     let disk = sermon_core::atomic_save::read_vault_file(vault, &rel).ok();
+    // Splice the edited body into the splice source so frontmatter and any
+    // directives outside the edited region survive the write. The splice
+    // source is the current disk content when present (already validated
+    // below against the session baseline), else the session baseline raw,
+    // else the body alone for a file that never existed.
+    let splice_source = disk
+        .clone()
+        .or_else(|| baselines.get(doc.id.as_str()).map(|b| b.content.clone()));
+    let new_content = splice_source
+        .as_deref()
+        .map(|raw| replace_document_body(raw, &body))
+        .unwrap_or_else(|| body.clone());
     let baseline_hash = baselines
         .get(doc.id.as_str())
         .map(|b| b.hash.clone());
@@ -393,11 +407,13 @@ pub fn save_sermon(
     if let Some(disk_content) = &disk {
         let disk_hash = sermon::sha256_hex(disk_content.as_bytes());
         let editor_saw_disk = baseline_hash.as_deref() == Some(disk_hash.as_str());
-        if disk_content != &body && !editor_saw_disk {
-            // Remember the rejected buffer so get_filesystem_status can
-            // classify local-dirty / both-changed and Keep Local / Merge /
-            // Save Local As operate on the editor's real content.
-            baselines.record_buffer(&doc.id, body.clone());
+        if disk_content != &new_content && !editor_saw_disk {
+            // Remember the rejected buffer (body spliced into the disk raw, so
+            // it carries frontmatter like a real document) so
+            // get_filesystem_status can classify local-dirty / both-changed
+            // and Keep Local / Merge / Save Local As operate on the editor's
+            // real content.
+            baselines.record_buffer(&doc.id, new_content.clone());
             return Ok(SaveResultDto {
                 success: false,
                 saved_at: now_rfc3339(),
@@ -420,11 +436,11 @@ pub fn save_sermon(
         }
     }
 
-    sermon_core::atomic_save::save_sermon_atomic(vault, &rel, &body).map_err(err)?;
-    let parsed = sermon::SermonDoc::parse(&body).map_err(err)?;
+    sermon_core::atomic_save::save_sermon_atomic(vault, &rel, &new_content).map_err(err)?;
+    let parsed = sermon::SermonDoc::parse(&new_content).map_err(err)?;
     let mut stats = indexer::IndexStats::default();
     indexer::index_single(conn, &rel, &parsed, &mut stats).map_err(err)?;
-    baselines.record(&doc.id, Baseline::new(rel, body));
+    baselines.record(&doc.id, Baseline::new(rel, new_content));
     Ok(SaveResultDto {
         success: true,
         saved_at: now_rfc3339(),
@@ -811,11 +827,28 @@ pub fn resolve_conflict(
             .ok_or_else(|| format!("sermon not found: {}", req.sermon_id))?,
     };
     ensure_canonical_markdown(&content)?;
-    sermon_core::atomic_save::save_sermon_atomic(vault, &rel, &content).map_err(err)?;
-    let parsed = sermon::SermonDoc::parse(&content).map_err(err)?;
+    // The local buffer and merged body are body-only Markdown; splice into
+    // the on-disk raw (else the session baseline raw) so frontmatter and
+    // directives outside the edited region survive the resolution write. A
+    // buffer that already carries its own frontmatter fence (Keep Local /
+    // Save Local As after a conflicted save) is a full document and is
+    // persisted verbatim — re-splicing it would duplicate the fence.
+    let new_content = if split_fm_local(&content).2 {
+        content.clone()
+    } else {
+        let splice_source = sermon_core::atomic_save::read_vault_file(vault, &rel)
+            .ok()
+            .or_else(|| baselines.get(&req.sermon_id).map(|b| b.content.clone()));
+        splice_source
+            .as_deref()
+            .map(|raw| replace_document_body(raw, &content))
+            .unwrap_or_else(|| content.clone())
+    };
+    sermon_core::atomic_save::save_sermon_atomic(vault, &rel, &new_content).map_err(err)?;
+    let parsed = sermon::SermonDoc::parse(&new_content).map_err(err)?;
     let mut stats = indexer::IndexStats::default();
     indexer::index_single(conn, &rel, &parsed, &mut stats).map_err(err)?;
-    baselines.record(&req.sermon_id, Baseline::new(rel, content));
+    baselines.record(&req.sermon_id, Baseline::new(rel, new_content));
     Ok(SaveResultDto {
         success: true,
         saved_at: now_rfc3339(),
@@ -1646,6 +1679,158 @@ mod tests {
         inline.body.push_str("\nText with <em>inline</em> HTML.\n");
         let result = save_sermon(&vault, &mut conn, &mut baselines, &inline).unwrap();
         assert!(result.success);
+    }
+
+    #[test]
+    fn save_splices_body_into_disk_raw_preserving_frontmatter_and_identity() {
+        let (_tmp, vault, db) = setup("splicefm");
+        // Seed with an unknown frontmatter field that must survive a prose edit.
+        let content = "---\nid: alpha\ntitle: \"Alpha\"\nprimary_passage: \"John.3.16\"\nbig_idea: \"idea\"\nstructure_type: verse_by_verse\ncustom_field: \"keep-me\"\n---\n\nGod so loved the world.\n";
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "alpha.md", &content).unwrap();
+        let mut conn = indexer::open_pastor_db(&db).unwrap();
+        let doc = sermon::SermonDoc::parse(&content).unwrap();
+        let mut stats = indexer::IndexStats::default();
+        indexer::index_single(&mut conn, "alpha.md", &doc, &mut stats).unwrap();
+
+        let (loaded, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        assert_eq!(loaded.id, "alpha");
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&loaded.id, baseline);
+
+        // A pure prose edit: the body alone must not replace the document.
+        let mut edited = loaded.clone();
+        edited.body.push_str("\nEdited paragraph.\n");
+        let saved = save_sermon(&vault, &mut conn, &mut baselines, &edited).unwrap();
+        assert!(saved.success);
+
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("id: alpha"), "frontmatter must survive");
+        assert!(
+            on_disk.contains("custom_field: \"keep-me\""),
+            "unknown frontmatter field must survive a body-only save"
+        );
+        assert!(on_disk.contains("Edited paragraph."));
+        assert!(on_disk.contains("God so loved the world."));
+
+        // Identity is stable across the save → reload round trip.
+        let (reloaded, _) = load_sermon(&vault, "alpha.md").unwrap();
+        assert_eq!(reloaded.id, loaded.id);
+        assert!(reloaded.body.contains("Edited paragraph."));
+    }
+
+    #[test]
+    fn save_preserves_directive_fences_and_known_directive_recognition() {
+        let (_tmp, vault, db) = setup("splicedir");
+        let body = "Opening prose.\n\n:::movement{title=\"The Eternal Word\" index=\"1\"}\nIn the beginning was the Word.\n:::\n\nMiddle prose.\n\n:::exegetical-notes\nGreek: logos.\n:::\n\nClosing prose.";
+        let content = sermon_md("alpha", "Alpha", body);
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "alpha.md", &content).unwrap();
+        let mut conn = indexer::open_pastor_db(&db).unwrap();
+        let doc = sermon::SermonDoc::parse(&content).unwrap();
+        let mut stats = indexer::IndexStats::default();
+        indexer::index_single(&mut conn, "alpha.md", &doc, &mut stats).unwrap();
+
+        let (loaded, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        assert!(
+            loaded.directives.iter().any(|d| d.key == "movement"),
+            "movement directive recognized at load"
+        );
+        assert!(loaded.directives.iter().any(|d| d.key == "exegetical-notes"));
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&loaded.id, baseline);
+
+        let mut edited = loaded.clone();
+        edited.body.push_str("\n\nFinal paragraph.\n");
+        let saved = save_sermon(&vault, &mut conn, &mut baselines, &edited).unwrap();
+        assert!(saved.success);
+
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        // The loaded body is a re-serialization, so assert semantic survival
+        // (fence + attribute value), not byte identity.
+        assert!(on_disk.contains(":::movement"), "movement fence survives");
+        assert!(on_disk.contains("The Eternal Word"));
+        assert!(on_disk.contains(":::exegetical-notes"));
+
+        // After save + reload the known directive is still recognized (not
+        // demoted to unknown) and the fence survives in the body.
+        let (reloaded, _) = load_sermon(&vault, "alpha.md").unwrap();
+        assert!(
+            reloaded.directives.iter().any(|d| d.key == "movement"),
+            "movement directive still recognized after save+reload"
+        );
+        assert!(reloaded.body.contains(":::exegetical-notes"));
+        assert!(reloaded.body.contains("Final paragraph."));
+    }
+
+    #[test]
+    fn keep_local_after_conflicted_save_preserves_frontmatter_and_local_edit() {
+        let (_tmp, vault, db) = setup("keeplocal");
+        let (mut conn, _content) = seed(&vault, &db);
+        let (doc, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&doc.id, baseline);
+
+        // External edit lands on disk, then the editor's save is rejected.
+        let external = sermon_md("alpha", "Alpha", "External body.");
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "alpha.md", &external).unwrap();
+        let mut edited = doc.clone();
+        edited.body.push_str("\nLocal edit.\n");
+        let result = save_sermon(&vault, &mut conn, &mut baselines, &edited).unwrap();
+        assert!(!result.success);
+
+        // Keep Local must write the editor's content without stripping the
+        // frontmatter (the recorded buffer carries the full raw document).
+        let res = resolve_conflict(
+            &vault,
+            &mut conn,
+            &mut baselines,
+            &ConflictResolutionDto {
+                sermon_id: doc.id.clone(),
+                strategy: "keep-local".into(),
+                merged_body: None,
+                save_as_path: None,
+            },
+        )
+        .unwrap();
+        assert!(res.success);
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("id: alpha"), "frontmatter must survive keep-local");
+        assert!(on_disk.contains("Local edit."));
+        assert!(!on_disk.contains("External body."));
+    }
+
+    #[test]
+    fn merge_strategy_splices_merged_body_into_disk_frontmatter() {
+        let (_tmp, vault, db) = setup("mergefm");
+        let (mut conn, _content) = seed(&vault, &db);
+        let (doc, baseline) = load_sermon(&vault, "alpha.md").unwrap();
+        let mut baselines = SessionBaselines::default();
+        baselines.record(&doc.id, baseline);
+
+        let external = sermon_md("alpha", "Alpha", "Disk body.");
+        sermon_core::atomic_save::save_sermon_atomic(&vault, "alpha.md", &external).unwrap();
+
+        // mergedBody is body-only Markdown from the frontend merge view.
+        let res = resolve_conflict(
+            &vault,
+            &mut conn,
+            &mut baselines,
+            &ConflictResolutionDto {
+                sermon_id: doc.id.clone(),
+                strategy: "merge".into(),
+                merged_body: Some(
+                    "Merged body paragraph.\n\n:::movement{title=\"M\"}\nMerged movement.\n:::\n"
+                        .to_string(),
+                ),
+                save_as_path: None,
+            },
+        )
+        .unwrap();
+        assert!(res.success);
+        let on_disk = sermon_core::atomic_save::read_vault_file(&vault, "alpha.md").unwrap();
+        assert!(on_disk.contains("id: alpha"), "frontmatter must survive merge");
+        assert!(on_disk.contains("Merged body paragraph."));
+        assert!(on_disk.contains(":::movement{title=\"M\"}"));
+        assert!(!on_disk.contains("Disk body."));
     }
 
     #[test]

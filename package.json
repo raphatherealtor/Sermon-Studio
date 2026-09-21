@@ -69,6 +69,7 @@
     "react-dom": "19.0.3",
     "react-hook-form": "^7.88.0",
     "recharts": "^2.15.2",
+    "tiptap-markdown": "^0.8.10",
     "zustand": "^5.x"
   },
   "devDependencies": {
