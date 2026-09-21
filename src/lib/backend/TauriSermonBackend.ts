@@ -45,6 +45,7 @@ import type {
   AppSettings,
   CodecRoundTripResult,
 } from './types';
+import { isTauriRuntime } from './runtime';
 
 // Dynamic import isolates Tauri dependency from the browser bundle.
 // This file must never be imported by React components directly.
@@ -87,9 +88,15 @@ export function isBackendUnavailableError(e: unknown): e is BackendUnavailableEr
 }
 
 async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  // Not inside the Tauri webview (browser/static preview, or server/build
+  // evaluation): the native backend is unavailable. Checked explicitly so the
+  // error semantics stay correct now that @tauri-apps/api is a real dependency
+  // (the module import alone can no longer tell us we are outside Tauri).
+  if (!isTauriRuntime()) {
+    throw new BackendUnavailableError(command, new Error('not running inside the Tauri webview'));
+  }
   let invoke: <R>(cmd: string, args?: Record<string, unknown>) => Promise<R>;
   try {
-    // Resolved at runtime only inside the Tauri webview.
     ({ invoke } = await import('@tauri-apps/api/core' as string));
   } catch (e) {
     throw new BackendUnavailableError(command, e);
