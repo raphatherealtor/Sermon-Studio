@@ -388,6 +388,72 @@ Believe that Jesus is the Christ, the Son of God, and that by believing you may 
   fsState: 'clean',
 };
 
+// ── Static lint fixtures (Rust Track E rule IDs) ─────────────────────────────
+// Deterministic preview data conforming to the Rust linter transport contract.
+// Canonical rule IDs (from the Rust structural linter):
+//   missing-big-idea · orphaned-movement · missing-application ·
+//   illustration-fatigue-90d
+// The mock NEVER computes rules from document content — Rust does that.
+
+const lint = (
+  id: string,
+  severity: 'error' | 'warning' | 'info',
+  ruleId: string,
+  message: string,
+  extra: Partial<LintFinding> = {},
+): LintFinding => ({ id, severity, ruleId, code: ruleId, message, ...extra });
+
+const LINT_FIXTURES: Record<string, LintFinding[]> = {
+  default: [
+    lint('fixture-big-idea-1', 'warning', 'missing-big-idea',
+      'No Big Idea statement found in the frontmatter or :::big-idea directive.',
+      { location: 'frontmatter', suggestedAction: 'State the central proposition as the sermon Big Idea.' }),
+    lint('fixture-orphan-1', 'warning', 'orphaned-movement',
+      'Movement "The Provision" has no supporting sub-points or resolved warrant.',
+      { location: 'outline', movementId: 'node-4', suggestedAction: 'Add sub-points or a warrant statement to the movement.' }),
+    lint('fixture-fatigue-1', 'info', 'illustration-fatigue-90d',
+      'Illustration "the prodigal son" was used 4 times in the last 90 days.',
+      { location: 'body', suggestedAction: 'Replace or supplement with a less-recently-used illustration.' }),
+  ],
+  'sermon-012': [
+    lint('fixture-big-idea-2', 'warning', 'missing-big-idea',
+      'No Big Idea statement found in the frontmatter or :::big-idea directive.',
+      { location: 'frontmatter', suggestedAction: 'State the central proposition as the sermon Big Idea.' }),
+    lint('fixture-application-2', 'warning', 'missing-application',
+      'No application section or :::application directive found.',
+      { location: 'body', suggestedAction: 'Add concrete application for the congregation.' }),
+    lint('fixture-orphan-2', 'warning', 'orphaned-movement',
+      'Movement 1 has no supporting sub-points or resolved warrant.',
+      { location: 'outline', movementId: 'movement-1', suggestedAction: 'Add sub-points or a warrant statement to the movement.' }),
+  ],
+};
+
+// ── Static reference fixtures (Track A resolution states) ────────────────────
+// Deterministic preview data covering all three Track A resolution states:
+// definite · ambiguous (open-ended/ff) · invalid. No parsing happens here —
+// the mock never imitates the Rust reference parser.
+
+const REFERENCE_FIXTURES: ReferenceMatch[] = [
+  {
+    raw: 'John 6:35', book: 'John', chapter: 6, verse: 35, endVerse: null,
+    offset: 0, length: 10, osisId: 'John.6.35', resolution: 'definite',
+  },
+  {
+    raw: 'Romans 8:26–27', book: 'Romans', chapter: 8, verse: 26, endVerse: 27,
+    offset: 20, length: 15, osisId: 'Rom.8.26-Rom.8.27', resolution: 'definite',
+  },
+  {
+    raw: 'John 15:1ff', book: 'John', chapter: 15, verse: 1, endVerse: null,
+    offset: 45, length: 11, resolution: 'ambiguous',
+    reason: 'Open-ended reference ("ff") — end verse is ambiguous.',
+  },
+  {
+    raw: 'Maccabees 3:2', book: 'Maccabees', chapter: 3, verse: 2, endVerse: null,
+    offset: 66, length: 13, resolution: 'invalid',
+    reason: 'Book is not in the canonical book table.',
+  },
+];
+
 // ── MockSermonBackend ─────────────────────────────────────────────────────────
 
 export class MockSermonBackend implements SermonBackend {
@@ -567,7 +633,7 @@ export class MockSermonBackend implements SermonBackend {
       scripture: newDoc.scripture,
       series: newDoc.series,
       status: newDoc.status,
-      wordCount: original.wordCount,
+      wordCount: original.body.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length,
       createdAt: newDoc.createdAt,
       updatedAt: newDoc.updatedAt,
       preachedOn: null,
@@ -596,99 +662,24 @@ export class MockSermonBackend implements SermonBackend {
   }
 
   // ── Compiler / analysis ───────────────────────────────────────────────────
+  // Track I contract: the mock does NOT reimplement Rust lint/reference
+  // business rules. Rust (Track A/E) owns parsing and rule evaluation; the
+  // mock only returns deterministic STATIC FIXTURE RESULTS that conform to
+  // the real Rust transport contracts.
 
-  async parseReferences(text: string): Promise<ReferenceMatch[]> {
+  async parseReferences(_text: string): Promise<ReferenceMatch[]> {
     await delay(100);
-    const refs: ReferenceMatch[] = [];
-    const pattern = /\b(John|Romans|Isaiah|Matthew|Luke|Galatians|James|Ephesians|Jeremiah|Psalms?|Genesis|Exodus|Revelation|Acts|Hebrews|Philippians|Colossians|Corinthians)\s+(\d+):(\d+)(?:[-–](\d+))?\b/g;
-    let m: RegExpExecArray | null;
-    while ((m = pattern.exec(text)) !== null) {
-      refs.push({
-        raw: m[0],
-        book: m[1],
-        chapter: parseInt(m[2]),
-        verse: parseInt(m[3]),
-        endVerse: m[4] ? parseInt(m[4]) : null,
-        offset: m.index,
-        length: m[0].length,
-        resolution: 'definite',
-      });
-    }
-    return refs;
+    // Static reference fixtures covering all three Track A resolution states.
+    // Offsets/lengths are fixture constants — no parsing happens here.
+    return REFERENCE_FIXTURES.map((f) => ({ ...f }));
   }
 
   async lintSermon(doc: SermonDocument): Promise<LintFinding[]> {
     await delay(200);
-    const findings: LintFinding[] = [];
-    const wordCount = doc.body.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
-
-    if (!doc.scripture) {
-      findings.push({
-        id: 'lint-001', severity: 'error', ruleId: 'MISSING_SCRIPTURE', code: 'MISSING_SCRIPTURE',
-        message: 'No primary scripture reference assigned to this sermon.',
-        location: 'metadata', suggestedAction: 'Add a scripture reference in the sermon metadata.',
-      });
-    }
-
-    if (doc.outline.length < 2) {
-      findings.push({
-        id: 'lint-002', severity: 'warning', ruleId: 'MISSING_BIG_IDEA', code: 'MISSING_BIG_IDEA',
-        message: 'No big idea directive found. Expository sermons should have a clearly stated central proposition.',
-        location: 'structure', suggestedAction: 'Add a :::big-idea directive with the central proposition.',
-      });
-    }
-
-    if (wordCount < 1500) {
-      findings.push({
-        id: 'lint-003', severity: 'warning', ruleId: 'LOW_WORD_COUNT', code: 'LOW_WORD_COUNT',
-        message: `Word count is ${wordCount}. Expository sermons typically run 2,500–4,500 words.`,
-        location: 'body',
-      });
-    }
-
-    if (!doc.body.includes('blockquote')) {
-      findings.push({
-        id: 'lint-004', severity: 'info', ruleId: 'NO_SCRIPTURE_QUOTE', code: 'NO_SCRIPTURE_QUOTE',
-        message: 'No quoted scripture block found in body. Consider quoting the primary text.',
-        location: 'body', suggestedAction: 'Use a blockquote to quote the primary passage.',
-      });
-    }
-
-    // Orphaned movement
-    if (doc.outline.length > 0 && doc.outline.some((n) => n.children.length === 0 && n.level === 1)) {
-      findings.push({
-        id: 'lint-005', severity: 'warning', ruleId: 'ORPHANED_MOVEMENT', code: 'ORPHANED_MOVEMENT',
-        message: 'One or more main movements have no supporting sub-points. Unresolved warrant detected.',
-        location: 'outline', movementId: doc.outline.find((n) => n.children.length === 0)?.id,
-        suggestedAction: 'Add supporting sub-points or warrant statements to each movement.',
-      });
-    }
-
-    // Missing application
-    if (!doc.body.toLowerCase().includes('application') && !doc.body.toLowerCase().includes('apply')) {
-      findings.push({
-        id: 'lint-006', severity: 'warning', ruleId: 'MISSING_APPLICATION', code: 'MISSING_APPLICATION',
-        message: 'No application section detected. Expository sermons should include concrete application.',
-        location: 'body', suggestedAction: 'Add an application section or :::application directive.',
-      });
-    }
-
-    // Illustration fatigue
-    findings.push({
-      id: 'lint-007', severity: 'info', ruleId: 'ILLUSTRATION_FATIGUE', code: 'ILLUSTRATION_FATIGUE',
-      message: 'Illustration "the prodigal son" has been used 4 times in the last 6 months. Consider a fresher illustration.',
-      location: 'body', suggestedAction: 'Replace or supplement with a less-used illustration.',
-    });
-
-    if (doc.directives.length === 0) {
-      findings.push({
-        id: 'lint-008', severity: 'info', ruleId: 'NO_DIRECTIVES', code: 'NO_DIRECTIVES',
-        message: 'No directives set. Consider adding translation, occasion, and audience.',
-        location: 'directives',
-      });
-    }
-
-    return findings;
+    // Static lint fixtures keyed by representative scenario. Rule IDs match
+    // the Rust linter's canonical vocabulary exactly; the UI never sees
+    // mock-invented rules. No rule computation happens in TypeScript.
+    return (LINT_FIXTURES[doc.id] ?? LINT_FIXTURES.default).map((f) => ({ ...f }));
   }
 
   // ── Study rail ────────────────────────────────────────────────────────────

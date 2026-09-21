@@ -23,31 +23,24 @@ const MANUSCRIPT_MODES: { id: PulpitManuscriptMode; label: string; description: 
   { id: 'combined', label: 'Combined', description: 'Outline with key manuscript sections' },
 ];
 
-const TYPOGRAPHY_PRESETS = [
-  { value: 'default', label: 'Default Expository' },
-  { value: 'outline-heavy', label: 'Outline-Heavy' },
-  { value: 'manuscript', label: 'Full Manuscript' },
-  { value: 'notes', label: 'Preaching Notes' },
-  { value: 'handout', label: 'Congregation Handout' },
-];
-
 export default function ExportScreenContent() {
   const backend = useBackend();
 
   const [sermons, setSermons] = useState<SermonSummary[]>([]);
   const [loadingSermons, setLoadingSermons] = useState(true);
-  const [selectedSermonId, setSelectedSermonId] = useState('sermon-001');
+  // Track I: no magic sermon id. Selection starts empty and is filled from
+  // listSermons() once loaded (first entry), never from a hardcoded default.
+  const [selectedSermonId, setSelectedSermonId] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('pulpit_manuscript');
   const [manuscriptMode, setManuscriptMode] = useState<PulpitManuscriptMode>('manuscript');
 
-  // Options
-  const [pageSize, setPageSize] = useState<'letter' | 'a4' | 'a5'>('letter');
-  const [fontSize, setFontSize] = useState(11);
-  const [typographyPreset, setTypographyPreset] = useState('default');
-  const [includeTitlePage, setIncludeTitlePage] = useState(true);
-  const [includeScriptureRefs, setIncludeScriptureRefs] = useState(true);
-  const [includeNotes, setIncludeNotes] = useState(true);
-  const [includeIllustrations, setIncludeIllustrations] = useState(true);
+  // Options — only backend-supported controls are exposed. The canonical V1
+  // Typst templates fix page size, typography, and section layout; page-size/
+  // font-size/preset controls would be silent no-ops and were removed
+  // (Track I). `includeNotes` IS honored by the backend for the pulpit
+  // manuscript (private exegetical notes) and is structurally impossible for
+  // the church bulletin.
+  const [includeNotes, setIncludeNotes] = useState(false);
   const [outputFilename, setOutputFilename] = useState('');
   const [outputPath, setOutputPath] = useState('/home/preacher/sermons/exports');
 
@@ -61,11 +54,26 @@ export default function ExportScreenContent() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // Track I: "Reveal in File Manager" is typed as unsupported by the native
+  // backend; the failure is caught and surfaced instead of becoming an
+  // unhandled promise rejection.
+  const [revealMessage, setRevealMessage] = useState<string | null>(null);
+
   useEffect(() => {
+    let cancelled = false;
     backend.listSermons().then((list) => {
-      setSermons(list.filter((s) => s.status !== 'archived'));
+      if (cancelled) return;
+      const visible = list.filter((s) => s.status !== 'archived');
+      setSermons(visible);
+      setSelectedSermonId((current) => {
+        if (current) return current;
+        return visible[0]?.id ?? '';
+      });
       setLoadingSermons(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [backend]);
 
   const selectedSermon = sermons.find((s) => s.id === selectedSermonId);
@@ -92,16 +100,13 @@ export default function ExportScreenContent() {
     setExportError(null);
     setExportResult(null);
     try {
+      // Track I: send only the options the Rust backend actually honors
+      // (output filename/path, and private-note inclusion for the pulpit
+      // manuscript). Unsupported options are never sent as fake choices.
       const options: ExportOptions = {
-        pageSize,
-        fontSize,
-        typographyPreset,
-        includeTitlePage,
-        includeScriptureReferences: includeScriptureRefs,
-        includeNotes,
-        includeIllustrations,
         outputFilename: outputFilename || `${selectedSermon?.title?.toLowerCase().replace(/\s+/g, '-') || 'sermon'}`,
         outputPath,
+        ...(selectedFormat === 'pulpit_manuscript' ? { includeNotes } : {}),
       };
       const result = await backend.executeExportJob({
         sermonId: selectedSermonId,
@@ -118,10 +123,20 @@ export default function ExportScreenContent() {
     }
   };
 
-  // Fix 3: Use generic "Reveal in File Manager" label
   const handleReveal = async () => {
     if (!exportResult?.outputPath) return;
-    await backend.revealExportedFile({ path: exportResult.outputPath });
+    try {
+      await backend.revealExportedFile({ path: exportResult.outputPath });
+      setRevealMessage('Revealed in file manager.');
+    } catch (e: unknown) {
+      // The native backend returns a typed unsupported error for reveal.
+      // Surface the unavailable state instead of an unhandled rejection.
+      setRevealMessage(
+        e instanceof Error
+          ? `Reveal is not available: ${e.message}`
+          : 'Reveal is not available in this environment.'
+      );
+    }
   };
 
   const formatLabel = FORMAT_OPTIONS.find((f) => f.id === selectedFormat)?.label || selectedFormat;
@@ -241,54 +256,39 @@ export default function ExportScreenContent() {
                 )}
               </div>
 
-              {/* Options */}
+              {/* Options — backend-supported controls only (Track I).
+                  Page size, typography, and section toggles are fixed by the
+                  canonical V1 Typst templates; exposing them as choices would
+                  make the backend's silent ignoring of them look like
+                  functionality. */}
               <div className="card-panel">
                 <h2 className="text-sm font-600 text-fg mb-4">Export Options</h2>
+                <div className="flex items-start gap-2 p-3 rounded bg-info/8 border border-info/20 mb-4">
+                  <Info size={12} className="text-ref-blue flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-fg-dim leading-relaxed">
+                    V1 layouts are fixed by the canonical Typst templates — the pulpit
+                    manuscript prints on A4 and the bulletin on A5 with studio-set
+                    typography. Page size, font, and section toggles are not
+                    backend-configurable yet.
+                  </p>
+                </div>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-fg-dim mb-1">Page Size</label>
-                      <select value={pageSize} onChange={(e) => setPageSize(e.target.value as 'letter' | 'a4' | 'a5')} className="input-field text-xs">
-                        <option value="letter">US Letter</option>
-                        <option value="a4">A4</option>
-                        <option value="a5">A5</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-fg-dim mb-1">Font Size (pt)</label>
-                      <input type="number" min={8} max={16} value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} className="input-field text-xs" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-fg-dim mb-1">Typography</label>
-                      <select value={typographyPreset} onChange={(e) => setTypographyPreset(e.target.value)} className="input-field text-xs">
-                        {TYPOGRAPHY_PRESETS.map((p) => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Include/exclude toggles */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'Title Page', value: includeTitlePage, set: setIncludeTitlePage },
-                      { label: 'Scripture References', value: includeScriptureRefs, set: setIncludeScriptureRefs },
-                      { label: 'Notes', value: includeNotes, set: setIncludeNotes },
-                      { label: 'Illustrations', value: includeIllustrations, set: setIncludeIllustrations },
-                    ].map(({ label, value, set }) => (
-                      <label key={label} className="flex items-center gap-2 cursor-pointer">
-                        <button
-                          role="switch"
-                          aria-checked={value}
-                          onClick={() => set(!value)}
-                          className={`toggle-track ${value ? 'active' : ''}`}
-                        >
-                          <div className="toggle-thumb" />
-                        </button>
-                        <span className="text-xs text-fg">{label}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {selectedFormat === 'pulpit_manuscript' && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <button
+                        role="switch"
+                        aria-checked={includeNotes}
+                        onClick={() => setIncludeNotes(!includeNotes)}
+                        className={`toggle-track ${includeNotes ? 'active' : ''}`}
+                      >
+                        <div className="toggle-thumb" />
+                      </button>
+                      <span className="text-xs text-fg">
+                        Include private study notes
+                        <span className="text-fg-dim"> (exegetical-notes — pulpit manuscript only)</span>
+                      </span>
+                    </label>
+                  )}
 
                   {/* Output */}
                   <div className="grid grid-cols-2 gap-3">
@@ -442,6 +442,11 @@ export default function ExportScreenContent() {
                         <button onClick={handleReveal} className="btn-ghost text-xs w-full mt-1">
                           <FolderOpen size={11} /> Reveal in File Manager
                         </button>
+                        {revealMessage && (
+                          <p className="text-2xs text-fg-dim mt-1" role="status">
+                            {revealMessage}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

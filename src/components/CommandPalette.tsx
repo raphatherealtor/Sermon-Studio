@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
+import { saveActiveSermon } from '@/lib/store/saveWorkflow';
 import {
   Search, Plus, Save, FileOutput, AlertTriangle, Archive,
   Settings, Code2, BookOpen, Hash, Link2, X, Command,
@@ -56,7 +57,10 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const saveSermon = useCallback(async () => {
     if (!activeDocument) return;
     onClose();
-    await backend.saveSermon(activeDocument);
+    // Track I: the palette uses the SAME save workflow/state transitions as
+    // the editor's save control (saving → saved/clean or error/conflict), so
+    // "Unsaved" never lingers after a palette save.
+    await saveActiveSermon(backend);
   }, [backend, activeDocument, onClose]);
 
   const COMMANDS: CommandItem[] = [
