@@ -1399,15 +1399,6 @@ fn export_output_path(
     snapshot: &ExportSourceSnapshot,
     request: &ExportRequestDto,
 ) -> ApiResult<PathBuf> {
-    if let Some(path) = request
-        .options
-        .output_path
-        .as_deref()
-        .filter(|path| !path.trim().is_empty())
-    {
-        let path = PathBuf::from(path);
-        return Ok(if path.is_absolute() { path } else { vault.join(path) });
-    }
     let filename = request
         .options
         .output_filename
@@ -1433,6 +1424,24 @@ fn export_output_path(
     } else {
         format!("{filename}.pdf")
     };
+
+    if let Some(path) = request
+        .options
+        .output_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+    {
+        let path = PathBuf::from(path);
+        let path = if path.is_absolute() { path } else { vault.join(path) };
+        // The frontend field is an output directory. Preserve compatibility
+        // with callers that pass an explicit PDF path while making the UI's
+        // extensionless directory default produce a normal named PDF.
+        return Ok(if path.extension().is_some() {
+            path
+        } else {
+            path.join(filename)
+        });
+    }
     Ok(vault.join("exports").join(filename))
 }
 
@@ -2094,6 +2103,30 @@ mod tests {
         assert_eq!(result.format, "pulpit_manuscript");
         let pdf = std::fs::read(output).unwrap();
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn export_output_directory_gets_a_generated_pdf_filename() {
+        let (_tmp, vault, db) = setup("export-directory");
+        let (conn, _content) = seed(&vault, &db);
+        let snapshot = create_export_source_snapshot(&vault, &conn, "alpha").unwrap();
+        let directory = vault.join("exports");
+        let request = ExportRequestDto {
+            sermon_id: "alpha".to_string(),
+            format: "pulpit_manuscript".to_string(),
+            manuscript_mode: Some("manuscript".to_string()),
+            options: ExportOptionsDto {
+                include_notes: Some(false),
+                output_filename: None,
+                output_path: Some(directory.display().to_string()),
+            },
+            snapshot_id: Some(snapshot.snapshot_id.clone()),
+        };
+
+        assert_eq!(
+            export_output_path(&vault, &snapshot, &request).unwrap(),
+            directory.join("alpha-pulpit_manuscript.pdf")
+        );
     }
 
     #[test]

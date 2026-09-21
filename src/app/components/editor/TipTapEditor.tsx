@@ -83,6 +83,14 @@ export default function TipTapEditor({ content, onChange }: TipTapEditorProps) {
     return () => registerSermonEditor(null);
   }, [editor]);
 
+  // TipTap only consumes `content` during construction. Reconcile later
+  // backend-owned replacements (especially conflict resolution → Use Disk)
+  // into the live editor without emitting a user edit transaction.
+  React.useEffect(() => {
+    if (!editor || getEditorMarkdown(editor) === content) return;
+    editor.commands.setContent(content, false);
+  }, [content, editor]);
+
   if (!editor) return null;
 
   return (

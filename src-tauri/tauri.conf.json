@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "org.sermonstudio.app",
   "build": {
-    "frontendDist": "../ui/dist",
-    "devUrl": "http://localhost:5173",
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:4028",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },

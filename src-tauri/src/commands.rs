@@ -813,9 +813,9 @@ mod tests {
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {
-            // build.rs lists kebab-case command names (hyphens), the registry
-            // uses the Rust fn names (snake_case).
-            let needle = format!("\"{}\",", name.replace('_', "-"));
+            // The manifest must use the exact snake_case names invoked by
+            // JavaScript; Tauri derives kebab-case permission identifiers.
+            let needle = format!("\"{name}\",");
             assert!(
                 src.contains(&needle),
                 "build.rs APP_COMMANDS missing command: {name}"
