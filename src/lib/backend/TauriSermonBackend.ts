@@ -97,7 +97,7 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
   }
   let invoke: <R>(cmd: string, args?: Record<string, unknown>) => Promise<R>;
   try {
-    ({ invoke } = await import('@tauri-apps/api/core' as string));
+    ({ invoke } = await import('@tauri-apps/api/core'));
   } catch (e) {
     throw new BackendUnavailableError(command, e);
   }
