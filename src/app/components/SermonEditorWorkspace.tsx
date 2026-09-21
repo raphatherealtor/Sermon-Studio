@@ -6,6 +6,7 @@ import ArchiveRail from './editor/ArchiveRail';
 import EditorPanel from './editor/EditorPanel';
 import StudyRail from './editor/StudyRail';
 import type { SermonDocument } from '@/lib/backend/types';
+import { getActiveSermonMarkdown, lintIdentity } from '@/editor/transport/markdownTransport';
 
 interface SermonEditorWorkspaceProps {
   focusArchiveSearch?: boolean;
@@ -17,14 +18,23 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
   const { setDocument, activeDocument, setLintFindings, setLinting, setActiveSermon } = useEditorStore();
   const [loading, setLoading] = React.useState(true);
 
-  // Track previous lint key to debounce on meaningful changes
+  // Track previous lint identity to debounce on meaningful changes
   const lintKeyRef = useRef<string>('');
 
   useEffect(() => {
     let cancelled = false;
     async function loadInitial() {
       try {
-        const doc = await backend.loadSermon('sermon-001');
+        // No hardcoded sermon id: pick the first sermon the backend knows
+        // about. An empty vault is a valid state, not an error.
+        const sermons = await backend.listSermons();
+        if (cancelled) return;
+        const first = sermons[0];
+        if (!first) {
+          setLoading(false);
+          return;
+        }
+        const doc = await backend.loadSermon(first.id);
         if (!cancelled) {
           setDocument(doc);
           setActiveSermon(doc.id);
@@ -42,8 +52,12 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
     async (doc: SermonDocument) => {
       setLinting(true);
       try {
-        // Fix 4: call lintSermon with the CURRENT in-memory SermonDocument
-        const findings = await backend.lintSermon(doc);
+        // Lint exactly what a save would persist: convert the live editor
+        // state to canonical Markdown (the store buffer can lag the editor
+        // by a debounce tick) before handing the document to the backend.
+        const liveMarkdown = getActiveSermonMarkdown();
+        const lintDoc = liveMarkdown !== null ? { ...doc, body: liveMarkdown } : doc;
+        const findings = await backend.lintSermon(lintDoc);
         setLintFindings(findings);
       } finally {
         setLinting(false);
@@ -52,20 +66,13 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
     [backend, setLinting, setLintFindings]
   );
 
-  // Fix 4: Re-run linting when meaningful sermon content or metadata changes,
-  // using a debounce. Track title + scripture + body length + outline length
-  // as the lint key — not just sermon ID.
+  // Re-run linting when meaningful sermon content or metadata changes,
+  // using a debounce. The lint identity is a content hash (NOT body.length,
+  // which misses same-length edits like "advent" → "wonder").
   useEffect(() => {
     if (!activeDocument) return;
 
-    const lintKey = [
-      activeDocument.id,
-      activeDocument.title,
-      activeDocument.scripture,
-      activeDocument.body.length,
-      activeDocument.outline.length,
-      activeDocument.status,
-    ].join('|');
+    const lintKey = lintIdentity(activeDocument);
 
     if (lintKey === lintKeyRef.current) return;
     lintKeyRef.current = lintKey;
@@ -74,12 +81,6 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
     return () => clearTimeout(t);
   }, [
     activeDocument,
-    activeDocument?.id,
-    activeDocument?.title,
-    activeDocument?.scripture,
-    activeDocument?.body,
-    activeDocument?.outline,
-    activeDocument?.status,
     runLint,
   ]);
 

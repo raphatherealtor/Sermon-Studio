@@ -1,12 +1,6 @@
 'use client';
 import React from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import CharacterCount from '@tiptap/extension-character-count';
-import Highlight from '@tiptap/extension-highlight';
-import TextAlign from '@tiptap/extension-text-align';
-import Underline from '@tiptap/extension-underline';
 import {
   Bold,
   Italic,
@@ -24,10 +18,17 @@ import {
   Redo,
   Code,
 } from 'lucide-react';
+import {
+  createSermonEditorExtensions,
+  getEditorMarkdown,
+  registerSermonEditor,
+} from '@/editor/transport/markdownTransport';
 
 interface TipTapEditorProps {
+  /** Canonical Markdown (SermonDocument.body). */
   content: string;
-  onChange: (html: string) => void;
+  /** Receives canonical Markdown on every update. */
+  onChange: (markdown: string) => void;
 }
 
 interface ToolbarButtonProps {
@@ -61,18 +62,7 @@ function ToolbarButton({ onClick, active, disabled, title, children }: ToolbarBu
 
 export default function TipTapEditor({ content, onChange }: TipTapEditorProps) {
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
-      Placeholder.configure({
-        placeholder: 'Begin writing your sermon…',
-      }),
-      CharacterCount,
-      Highlight.configure({ multicolor: false }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Underline,
-    ],
+    extensions: createSermonEditorExtensions(),
     content,
     editorProps: {
       attributes: {
@@ -80,10 +70,18 @@ export default function TipTapEditor({ content, onChange }: TipTapEditorProps) {
       },
     },
     onUpdate: ({ editor: ed }) => {
-      onChange(ed.getHTML());
+      // Canonical Markdown out — this is exactly what save will persist.
+      onChange(getEditorMarkdown(ed));
     },
     immediatelyRender: false,
   });
+
+  // Register the live instance so the lint seam reads the editor's real
+  // state and lint findings can navigate to source positions.
+  React.useEffect(() => {
+    registerSermonEditor(editor);
+    return () => registerSermonEditor(null);
+  }, [editor]);
 
   if (!editor) return null;
 

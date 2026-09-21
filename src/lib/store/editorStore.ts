@@ -27,14 +27,16 @@ interface EditorStore {
   setLinting: (linting: boolean) => void;
   setConflict: (info: ConflictInfo | null) => void;
   setShowMergeDrawer: (show: boolean) => void;
-  updateBody: (html: string) => void;
+  updateBody: (markdown: string) => void;
   updateTitle: (title: string) => void;
   updateScripture: (scripture: string) => void;
   dismissLintFinding: (id: string) => void;
 }
 
-function computeWordCount(html: string): number {
-  return html.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
+function computeWordCount(markdown: string): number {
+  // The tag-strip is a no-op on canonical Markdown; kept for safety on any
+  // legacy HTML that reaches the store.
+  return markdown.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
 }
 
 export const useEditorStore = create<EditorStore>((set) => ({
@@ -72,12 +74,12 @@ export const useEditorStore = create<EditorStore>((set) => ({
   setLinting: (linting) => set({ isLinting: linting }),
   setConflict: (info) => set({ conflictInfo: info }),
   setShowMergeDrawer: (show) => set({ showMergeDrawer: show }),
-  updateBody: (html) =>
+  updateBody: (markdown) =>
     set((state) => {
-      const wc = computeWordCount(html);
+      const wc = computeWordCount(markdown);
       return {
         activeDocument: state.activeDocument
-          ? { ...state.activeDocument, body: html, updatedAt: new Date().toISOString() }
+          ? { ...state.activeDocument, body: markdown, updatedAt: new Date().toISOString() }
           : null,
         isDirty: true,
         wordCount: wc,

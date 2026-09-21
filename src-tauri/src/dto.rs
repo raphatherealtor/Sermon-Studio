@@ -190,9 +190,10 @@ pub struct SermonDocumentDto {
     pub scripture: String,
     pub series: Option<String>,
     pub status: String,
-    /// Canonical Markdown source. Markdown on disk remains the sermon source
-    /// of truth; the TipTap HTML conversion happens in the frontend editor
-    /// via the directive transport codec (never a second grammar).
+    /// Canonical Markdown body (prose + `:::` directive fences). Markdown on
+    /// disk remains the sermon source of truth; the frontend editor renders
+    /// this body via the markdown transport (TipTap markdown extension) and
+    /// returns canonical Markdown on save — never a second grammar.
     pub body: String,
     pub outline: Vec<OutlineNodeDto>,
     pub tags: Vec<String>,

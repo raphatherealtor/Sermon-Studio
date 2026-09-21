@@ -37,7 +37,13 @@ function InsertButton({ text, label }: { text: string; label?: string }) {
   const { updateBody, activeDocument } = useEditorStore();
   const handleInsert = () => {
     if (!activeDocument) return;
-    const insertion = `\n<blockquote>${text}</blockquote>\n`;
+    // Body is canonical Markdown: a quoted passage is a Markdown blockquote.
+    // (Block-level HTML would be refused by the backend save guard.)
+    const quote = text
+      .split('\n')
+      .map((line) => (line.trim() ? `> ${line}` : '>'))
+      .join('\n');
+    const insertion = `\n${quote}\n`;
     updateBody(activeDocument.body + insertion);
   };
   return (

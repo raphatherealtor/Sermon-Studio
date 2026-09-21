@@ -5,6 +5,7 @@ import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
 import { Save, AlertTriangle, AlertCircle, Info, CheckCircle, Loader2, ChevronDown, ChevronUp, BookOpen, GitMerge, HardDrive, FileText, Clock, X, Eye, EyeOff,  } from 'lucide-react';
 import type { DiffPreparationResult } from '@/lib/backend/types';
+import { focusSermonEditorAt } from '@/editor/transport/markdownTransport';
 
 const TipTapEditor = dynamic(() => import('./TipTapEditor'), { ssr: false });
 
@@ -228,7 +229,7 @@ export default function EditorPanel() {
         setConflict({
           localTitle: activeDocument.title,
           localModifiedAt: activeDocument.updatedAt,
-          diskModifiedAt: result.conflict.diskUpdatedAt,
+          diskModifiedAt: result.conflict.diskModifiedAt,
           diskVersion: result.conflict.diskVersion,
           diskWordCount: result.conflict.diskWordCount,
           sourcePath: activeDocument.sourcePath || '',
@@ -441,6 +442,16 @@ export default function EditorPanel() {
                   key={`lint-${finding.id}`}
                   className={`flex items-start gap-2.5 px-4 py-2 border-b border-border/30 ${SEVERITY_CLASS[finding.severity]} cursor-pointer hover:bg-elevated/50 transition-colors`}
                   title={finding.suggestedAction}
+                  onClick={() => {
+                    // Navigate to the source position when the backend
+                    // provided one (backend-owned linter, Track E).
+                    if (finding.sourceRange) {
+                      focusSermonEditorAt(
+                        finding.sourceRange.startLine,
+                        finding.sourceRange.startCol
+                      );
+                    }
+                  }}
                 >
                   <SeverityIcon size={10} className={`mt-0.5 flex-shrink-0 ${SEVERITY_TEXT[finding.severity]}`} />
                   <div className="min-w-0 flex-1">

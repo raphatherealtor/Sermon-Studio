@@ -255,40 +255,55 @@ const MOCK_DOCUMENT_001: SermonDocument = {
   series: 'Gospel of John',
   seriesIndex: 3,
   status: 'in-progress',
-  body: `<h1>The Bread of Life</h1>
-<p><em>John 6:35–51 — Expository Sermon — Gospel of John Series, Part 3</em></p>
+  body: `# The Bread of Life
 
-<h2>I. Introduction: The Hunger That Bread Cannot Satisfy</h2>
-<p>Every person in this room has known physical hunger. We know the gnawing emptiness, the distraction it produces, the singular focus it demands. Jesus draws on this universal experience to address a deeper hunger — the hunger of the soul that no earthly provision can satisfy.</p>
-<p>In John 6, the crowd has just witnessed the feeding of five thousand. They are full, satisfied, and enthusiastic. They want to make Jesus king by force (v. 15). But Jesus withdraws. He does not come to be a bread-provider; He comes to be the Bread.</p>
+*John 6:35–51 — Expository Sermon — Gospel of John Series, Part 3*
 
-<h2>II. The Claim: "I Am the Bread of Life" (vv. 35–40)</h2>
-<p>The first of the seven "I AM" declarations in John's Gospel is found here. It is not a modest claim. Jesus says:</p>
-<blockquote>"I am the bread of life; whoever comes to me shall not hunger, and whoever believes in me shall never thirst." — John 6:35 (ESV)</blockquote>
-<p>Notice the two verbs: <strong>comes</strong> and <strong>believes</strong>. Coming is the act; believing is the posture. Coming is once; believing is ongoing. The perfect tense in the Greek suggests a settled, permanent state of non-hunger for the one who has come and continues to believe.</p>
-<p>The word for bread here is <code>G740 ἄρτος (artos)</code> — the ordinary word for the loaf of bread that sustained daily life. Jesus is not using an elevated or ceremonial term. He is claiming to be the most basic necessity of human existence, but at the level of the soul.</p>
+## I. Introduction: The Hunger That Bread Cannot Satisfy
 
-<h2>III. The Problem: Grumbling Instead of Coming (vv. 41–46)</h2>
-<p>The crowd grumbles. They know this man's family. He is the carpenter's son from Nazareth. How can he claim to have "come down from heaven"? Their familiarity with his human origins blinds them to his divine nature.</p>
-<p>This is the perennial problem of natural religion: we evaluate Jesus by human categories and find him wanting. We need the Father to draw us (v. 44). No one can come to Jesus on their own initiative — this is a sovereign work of grace.</p>
-<p>The word <code>G1670 ἑλκύω (helkuō)</code> — "draws" — is the same word used in John 21:6 for dragging a net full of fish. It is not a gentle suggestion. It is an irresistible, effective drawing.</p>
+Every person in this room has known physical hunger. We know the gnawing emptiness, the distraction it produces, the singular focus it demands. Jesus draws on this universal experience to address a deeper hunger — the hunger of the soul that no earthly provision can satisfy.
 
-<h2>IV. The Provision: His Flesh for the Life of the World (vv. 47–51)</h2>
-<p>Jesus sharpens the metaphor. The bread he gives is his flesh, given for the life of the world. This anticipates the cross. The manna in the wilderness sustained Israel temporarily; the ancestors who ate it still died (v. 49). Jesus offers something qualitatively different — bread that produces eternal life.</p>
-<p>Cross-reference: <code>Exodus 16:4</code> — the original manna narrative. <code>Psalm 78:24</code> — the psalmist's reflection on it. Both point forward to this moment.</p>
+In John 6, the crowd has just witnessed the feeding of five thousand. They are full, satisfied, and enthusiastic. They want to make Jesus king by force (v. 15). But Jesus withdraws. He does not come to be a bread-provider; He comes to be the Bread.
 
-<h2>V. Application: Come, and Keep Coming</h2>
-<p>The invitation of this passage is not to a one-time event but to a continuous posture of dependence. As we eat physical bread daily, so we must come to Christ daily — through the Word, through prayer, through the gathered community.</p>
-<p>Three practical applications for this congregation:</p>
-<ol>
-<li><strong>Daily Scripture reading</strong> as the primary means of feeding on Christ</li>
-<li><strong>Corporate worship</strong> as the communal table where we eat together</li>
-<li><strong>Evangelism</strong> as the invitation to the hungry to come and eat</li>
-</ol>
+## II. The Claim: "I Am the Bread of Life" (vv. 35–40)
 
-<h2>VI. Conclusion: The Bread That Satisfies</h2>
-<p>Augustine wrote: "Thou madest us for Thyself, and our heart is restless, until it repose in Thee." The restlessness Augustine describes is the hunger Jesus addresses. There is a bread that satisfies — not temporarily, not partially, but permanently and completely. That bread is Christ himself.</p>
-<p>Come to him. Keep coming. And you shall not hunger.</p>`,
+The first of the seven "I AM" declarations in John's Gospel is found here. It is not a modest claim. Jesus says:
+
+> "I am the bread of life; whoever comes to me shall not hunger, and whoever believes in me shall never thirst." — John 6:35 (ESV)
+
+Notice the two verbs: **comes** and **believes**. Coming is the act; believing is the posture. Coming is once; believing is ongoing. The perfect tense in the Greek suggests a settled, permanent state of non-hunger for the one who has come and continues to believe.
+
+The word for bread here is \`G740 ἄρτος (artos)\` — the ordinary word for the loaf of bread that sustained daily life. Jesus is not using an elevated or ceremonial term. He is claiming to be the most basic necessity of human existence, but at the level of the soul.
+
+## III. The Problem: Grumbling Instead of Coming (vv. 41–46)
+
+The crowd grumbles. They know this man's family. He is the carpenter's son from Nazareth. How can he claim to have "come down from heaven"? Their familiarity with his human origins blinds them to his divine nature.
+
+This is the perennial problem of natural religion: we evaluate Jesus by human categories and find him wanting. We need the Father to draw us (v. 44). No one can come to Jesus on their own initiative — this is a sovereign work of grace.
+
+The word \`G1670 ἑλκύω (helkuō)\` — "draws" — is the same word used in John 21:6 for dragging a net full of fish. It is not a gentle suggestion. It is an irresistible, effective drawing.
+
+## IV. The Provision: His Flesh for the Life of the World (vv. 47–51)
+
+Jesus sharpens the metaphor. The bread he gives is his flesh, given for the life of the world. This anticipates the cross. The manna in the wilderness sustained Israel temporarily; the ancestors who ate it still died (v. 49). Jesus offers something qualitatively different — bread that produces eternal life.
+
+Cross-reference: \`Exodus 16:4\` — the original manna narrative. \`Psalm 78:24\` — the psalmist's reflection on it. Both point forward to this moment.
+
+## V. Application: Come, and Keep Coming
+
+The invitation of this passage is not to a one-time event but to a continuous posture of dependence. As we eat physical bread daily, so we must come to Christ daily — through the Word, through prayer, through the gathered community.
+
+Three practical applications for this congregation:
+
+1. **Daily Scripture reading** as the primary means of feeding on Christ
+2. **Corporate worship** as the communal table where we eat together
+3. **Evangelism** as the invitation to the hungry to come and eat
+
+## VI. Conclusion: The Bread That Satisfies
+
+Augustine wrote: "Thou madest us for Thyself, and our heart is restless, until it repose in Thee." The restlessness Augustine describes is the hunger Jesus addresses. There is a bread that satisfies — not temporarily, not partially, but permanently and completely. That bread is Christ himself.
+
+Come to him. Keep coming. And you shall not hunger.`,
   outline: [
     { id: 'node-1', level: 1, text: 'Introduction: The Hunger That Bread Cannot Satisfy', children: [] },
     {
@@ -334,14 +349,21 @@ const MOCK_DOCUMENT_005: SermonDocument = {
   scripture: 'Romans 8:1–11',
   series: 'Romans: The Gospel Unpacked',
   status: 'preached',
-  body: `<h1>No Condemnation</h1>
-<p><em>Romans 8:1–11 — Expository Sermon</em></p>
-<h2>I. The Declaration: No Condemnation (v. 1)</h2>
-<p>Paul opens chapter 8 with one of the most sweeping declarations in all of Scripture: "There is therefore now no condemnation for those who are in Christ Jesus." The word <code>G2631 κατάκριμα (katakrima)</code> — condemnation — refers not merely to a verdict but to the execution of that verdict. Paul is saying that for those in Christ, the sentence has been vacated.</p>
-<h2>II. The Basis: The Law of the Spirit (vv. 2–4)</h2>
-<p>The "law of the Spirit of life" has set us free from the "law of sin and death." This is not an abrogation of the Mosaic law but its fulfillment — what the law could not do (condemn sin in the flesh), God did by sending his Son.</p>
-<h2>III. The Application: Mind Set on the Spirit (vv. 5–11)</h2>
-<p>The practical outworking of this freedom is a mind set on the things of the Spirit rather than the flesh. This is not moral effort but a reorientation of the whole person toward God.</p>`,
+  body: `# No Condemnation
+
+*Romans 8:1–11 — Expository Sermon*
+
+## I. The Declaration: No Condemnation (v. 1)
+
+Paul opens chapter 8 with one of the most sweeping declarations in all of Scripture: "There is therefore now no condemnation for those who are in Christ Jesus." The word \`G2631 κατάκριμα (katakrima)\` — condemnation — refers not merely to a verdict but to the execution of that verdict. Paul is saying that for those in Christ, the sentence has been vacated.
+
+## II. The Basis: The Law of the Spirit (vv. 2–4)
+
+The "law of the Spirit of life" has set us free from the "law of sin and death." This is not an abrogation of the Mosaic law but its fulfillment — what the law could not do (condemn sin in the flesh), God did by sending his Son.
+
+## III. The Application: Mind Set on the Spirit (vv. 5–11)
+
+The practical outworking of this freedom is a mind set on the things of the Spirit rather than the flesh. This is not moral effort but a reorientation of the whole person toward God.`,
   outline: [
     { id: 'n1', level: 1, text: 'The Declaration: No Condemnation (v. 1)', children: [] },
     { id: 'n2', level: 1, text: 'The Basis: The Law of the Spirit (vv. 2–4)', children: [] },
@@ -364,19 +386,25 @@ const MOCK_DOCUMENT_DIRECTIVE: SermonDocument = {
   scripture: 'John 1:1',
   series: null,
   status: 'draft',
-  body: `<h1>Directive Transport Test</h1>
-<p>This sermon contains known and unknown directives for codec testing.</p>
-<div class="directive-block" data-directive="big-idea" data-attrs='{"text":"Christ is the eternal Word who became flesh to dwell among us"}'>:::big-idea{text="Christ is the eternal Word who became flesh to dwell among us"}
+  body: `# Directive Transport Test
+
+This sermon contains known and unknown directives for codec testing.
+
+:::big-idea{text="Christ is the eternal Word who became flesh to dwell among us"}
 The central claim of the Johannine prologue is the incarnation of the eternal Logos.
-:::</div>
-<p>Normal paragraph content between directives.</p>
-<div class="directive-block directive-block-unknown" data-directive="custom-block" data-attrs='{"foo":"bar"}' data-unknown="true">:::custom-block{foo="bar"}
+:::
+
+Normal paragraph content between directives.
+
+:::custom-block{foo="bar"}
 This is an unknown directive body. It must survive round-trip without modification.
-:::</div>
-<p>More content after the unknown directive.</p>
-<div class="directive-block" data-directive="application" data-attrs='{"point":"1"}'>:::application{point="1"}
+:::
+
+More content after the unknown directive.
+
+:::application{point="1"}
 Believe that Jesus is the Christ, the Son of God, and that by believing you may have life in his name.
-:::</div>`,
+:::`,
   outline: [],
   tags: ['codec-test'],
   createdAt: '2026-09-19T00:00:00Z',
@@ -463,7 +491,7 @@ export class MockSermonBackend implements SermonBackend {
       scripture: request?.scripture || '',
       series: request?.series || null,
       status: 'draft',
-      body: '<h1>Untitled Sermon</h1><p>Begin writing your sermon here…</p>',
+      body: '# Untitled Sermon\n\nBegin writing your sermon here…',
       outline: [],
       tags: [],
       createdAt: new Date().toISOString(),
@@ -509,10 +537,10 @@ export class MockSermonBackend implements SermonBackend {
       series: summary.series,
       status: summary.status,
       body: isIncomplete
-        ? `<h1>${summary.title}</h1><p><em>${summary.scripture}</em></p><p>This sermon is still in early draft stage. The main argument has not yet been developed.</p>`
+        ? `# ${summary.title}\n\n*${summary.scripture}*\n\nThis sermon is still in early draft stage. The main argument has not yet been developed.`
         : isLong
-        ? `<h1>${summary.title}</h1><p><em>${summary.scripture}</em></p><h2>I. Introduction</h2><p>This is a longer sermon with extensive development of the text. The exposition covers multiple movements and includes detailed word studies, cross-references, and application points.</p><h2>II. Exegesis</h2><p>The Greek text of this passage presents several interpretive challenges that require careful attention to the original language and historical context.</p><h2>III. Theological Synthesis</h2><p>The doctrinal implications of this passage connect to the broader biblical-theological narrative of redemption.</p><h2>IV. Application</h2><p>Three concrete applications for the contemporary congregation emerge from this text.</p><h2>V. Conclusion</h2><p>The sermon concludes with a call to respond to the text's central demand.</p>`
-        : `<h1>${summary.title}</h1><p><em>${summary.scripture}</em></p><h2>I. Introduction</h2><p>Opening the text and establishing the context for this passage.</p><h2>II. Exposition</h2><p>Working through the primary movements of the text.</p><h2>III. Application</h2><p>Bringing the text to bear on the congregation's present situation.</p><h2>IV. Conclusion</h2><p>Closing with a call to respond to the Word.</p>`,
+        ? `# ${summary.title}\n\n*${summary.scripture}*\n\n## I. Introduction\n\nThis is a longer sermon with extensive development of the text. The exposition covers multiple movements and includes detailed word studies, cross-references, and application points.\n\n## II. Exegesis\n\nThe Greek text of this passage presents several interpretive challenges that require careful attention to the original language and historical context.\n\n## III. Theological Synthesis\n\nThe doctrinal implications of this passage connect to the broader biblical-theological narrative of redemption.\n\n## IV. Application\n\nThree concrete applications for the contemporary congregation emerge from this text.\n\n## V. Conclusion\n\nThe sermon concludes with a call to respond to the text's central demand.`
+        : `# ${summary.title}\n\n*${summary.scripture}*\n\n## I. Introduction\n\nOpening the text and establishing the context for this passage.\n\n## II. Exposition\n\nWorking through the primary movements of the text.\n\n## III. Application\n\nBringing the text to bear on the congregation's present situation.\n\n## IV. Conclusion\n\nClosing with a call to respond to the Word.`,
       version: 1,
       directives: [{ key: 'translation', value: 'ESV' }],
       sourcePath: summary.sourcePath,
