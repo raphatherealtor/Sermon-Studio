@@ -1,10 +1,17 @@
 'use client';
 import React, { useState } from 'react';
-import { useBackend } from '@/lib/backend/BackendContext';
 import { GitMerge, AlertTriangle, CheckCircle, FileText, Loader2, User, HardDrive,  } from 'lucide-react';
-import type { ConflictResolution } from '@/lib/backend/types';
 
 type ResolutionStrategy = 'keep-mine' | 'keep-theirs' | 'merge';
+
+// Track I: this screen is an explicit DEMO/PREVIEW surface. All data below is
+// local fixture data and is never sent to any backend. The real inline
+// conflict workflow lives in the editor workspace (Track H); this component
+// must not invoke native backend operations against fixture IDs.
+//
+// Vocabulary note: the backend contract names the strategies
+// keep-local / use-disk / merge; this demo's keep-mine / keep-theirs / merge
+// map onto them one-to-one.
 
 interface DiffLine {
   type: 'added' | 'removed' | 'context';
@@ -56,8 +63,8 @@ function buildDiff(mine: string, theirs: string): DiffLine[] {
 
 const DIFF_LINES = buildDiff(MINE_BODY, THEIRS_BODY);
 
-const CONFLICT_META = {
-  sermonId: 'sermon-001',
+const DEMO_CONFLICT = {
+  sermonId: 'demo-conflict-fixture (not a real sermon id)',
   sermonTitle: 'The Bread of Life',
   scripture: 'John 6:35–51',
   mine: {
@@ -75,7 +82,6 @@ const CONFLICT_META = {
 };
 
 export default function ConflictResolutionContent() {
-  const backend = useBackend();
   const [strategy, setStrategy] = useState<ResolutionStrategy | null>(null);
   const [resolving, setResolving] = useState(false);
   const [resolved, setResolved] = useState(false);
@@ -87,23 +93,13 @@ export default function ConflictResolutionContent() {
     setResolving(true);
     setResolveError(null);
     try {
-      // BACKEND INTEGRATION POINT: adapter.resolveConflict. The backend
-      // contract names the strategies keep-local / use-disk / merge; this
-      // screen's demo vocabulary maps onto them one-to-one.
-      const request: ConflictResolution = {
-        sermonId: CONFLICT_META.sermonId,
-        strategy:
-          strategy === 'keep-mine'
-            ? 'keep-local'
-            : strategy === 'keep-theirs'
-              ? 'use-disk'
-              : 'merge',
-        mergedBody: strategy === 'merge' ? MINE_BODY + '\n\n[Merged section from disk version]' : undefined,
-      };
-      await backend.resolveConflict(request);
+      // Demo boundary: NO backend call. This preview simulates resolution
+      // locally so it can never mutate a real (or fake) native sermon. The
+      // real resolution flow is backend.resolveConflict via the editor
+      // workspace (Track H), which maps strategies keep-local / use-disk /
+      // merge one-to-one.
+      await new Promise((r) => setTimeout(r, 500));
       setResolved(true);
-    } catch (e: unknown) {
-      setResolveError(e instanceof Error ? e.message : 'Resolution failed. Try again.');
     } finally {
       setResolving(false);
     }
@@ -122,7 +118,7 @@ export default function ConflictResolutionContent() {
         <p className="text-sm text-muted-foreground">
           Strategy applied: <span className="text-primary font-mono-data">{strategy}</span>
         </p>
-        <p className="text-xs text-muted-foreground">The sermon has been saved. You may return to the editor.</p>
+        <p className="text-xs text-muted-foreground">Demo resolution applied locally — no real sermon was modified. The live workflow lives in the editor workspace.</p>
         <a href="/" className="btn-primary mt-2">
           Return to Editor
         </a>
@@ -145,15 +141,28 @@ export default function ConflictResolutionContent() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
+          {/* Track I: explicit demo/preview boundary */}
+          <div className="flex items-start gap-3 px-4 py-3 rounded border border-ref-blue/30 bg-ref-blue/8">
+            <FileText size={16} className="text-ref-blue flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-600 text-ref-blue">Demo — Preview Data</p>
+              <p className="text-xs text-fg-dim mt-0.5 leading-relaxed">
+                This screen is a design preview built from local fixture data. It does not
+                touch any real sermon; applying a resolution here only updates this preview.
+                Conflicts in the actual product are handled inline in the editor workspace.
+              </p>
+            </div>
+          </div>
+
           {/* Alert banner */}
           <div className="flex items-start gap-3 px-4 py-3 rounded border border-warn-amber/30 bg-warn-amber/8">
             <AlertTriangle size={16} className="text-warn-amber flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-600 text-warn-amber">
-                Conflict in &ldquo;{CONFLICT_META.sermonTitle}&rdquo;
+                Conflict in &ldquo;{DEMO_CONFLICT.sermonTitle}&rdquo;
               </p>
               <p className="text-xs text-foreground/70 mt-0.5">
-                Your in-memory version (v{CONFLICT_META.mine.version}) and the on-disk version (v{CONFLICT_META.theirs.version}) have diverged. 
+                Your in-memory version (v{DEMO_CONFLICT.mine.version}) and the on-disk version (v{DEMO_CONFLICT.theirs.version}) have diverged. 
                 Review the differences below and select a resolution strategy before saving.
               </p>
             </div>
@@ -172,19 +181,19 @@ export default function ConflictResolutionContent() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Version</span>
-                  <span className="text-xs font-mono-data text-foreground">v{CONFLICT_META.mine.version}</span>
+                  <span className="text-xs font-mono-data text-foreground">v{DEMO_CONFLICT.mine.version}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Modified</span>
-                  <span className="text-xs font-mono-data text-foreground">{formatTime(CONFLICT_META.mine.updatedAt)}</span>
+                  <span className="text-xs font-mono-data text-foreground">{formatTime(DEMO_CONFLICT.mine.updatedAt)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Word count</span>
-                  <span className="text-xs font-mono-data text-foreground">{CONFLICT_META.mine.wordCount.toLocaleString()}</span>
+                  <span className="text-xs font-mono-data text-foreground">{DEMO_CONFLICT.mine.wordCount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Source</span>
-                  <span className="text-2xs font-mono-data text-ref-blue">{CONFLICT_META.mine.source}</span>
+                  <span className="text-2xs font-mono-data text-ref-blue">{DEMO_CONFLICT.mine.source}</span>
                 </div>
               </div>
             </div>
@@ -200,19 +209,19 @@ export default function ConflictResolutionContent() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Version</span>
-                  <span className="text-xs font-mono-data text-foreground">v{CONFLICT_META.theirs.version}</span>
+                  <span className="text-xs font-mono-data text-foreground">v{DEMO_CONFLICT.theirs.version}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Modified</span>
-                  <span className="text-xs font-mono-data text-foreground">{formatTime(CONFLICT_META.theirs.updatedAt)}</span>
+                  <span className="text-xs font-mono-data text-foreground">{formatTime(DEMO_CONFLICT.theirs.updatedAt)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Word count</span>
-                  <span className="text-xs font-mono-data text-foreground">{CONFLICT_META.theirs.wordCount.toLocaleString()}</span>
+                  <span className="text-xs font-mono-data text-foreground">{DEMO_CONFLICT.theirs.wordCount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xs text-muted-foreground">Source</span>
-                  <span className="text-2xs font-mono-data text-warn-amber">{CONFLICT_META.theirs.source}</span>
+                  <span className="text-2xs font-mono-data text-warn-amber">{DEMO_CONFLICT.theirs.source}</span>
                 </div>
               </div>
             </div>
@@ -284,7 +293,7 @@ export default function ConflictResolutionContent() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-surface-3 rounded overflow-hidden">
                   <div className="px-3 py-1.5 border-b border-border text-2xs font-mono-data text-ref-blue">
-                    Your version (v{CONFLICT_META.mine.version})
+                    Your version (v{DEMO_CONFLICT.mine.version})
                   </div>
                   <pre className="p-3 text-xs font-mono-data text-foreground/80 max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {MINE_BODY}
@@ -292,7 +301,7 @@ export default function ConflictResolutionContent() {
                 </div>
                 <div className="bg-surface-3 rounded overflow-hidden">
                   <div className="px-3 py-1.5 border-b border-border text-2xs font-mono-data text-warn-amber">
-                    Disk version (v{CONFLICT_META.theirs.version})
+                    Disk version (v{DEMO_CONFLICT.theirs.version})
                   </div>
                   <pre className="p-3 text-xs font-mono-data text-foreground/80 max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {THEIRS_BODY}
@@ -337,7 +346,7 @@ export default function ConflictResolutionContent() {
                     Keep My Version
                   </p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    Discard the on-disk version. Your in-memory edits (v{CONFLICT_META.mine.version}, {CONFLICT_META.mine.wordCount.toLocaleString()} words) become the canonical version. The disk file is overwritten.
+                    Discard the on-disk version. Your in-memory edits (v{DEMO_CONFLICT.mine.version}, {DEMO_CONFLICT.mine.wordCount.toLocaleString()} words) become the canonical version. The disk file is overwritten.
                   </p>
                 </div>
               </label>
@@ -373,7 +382,7 @@ export default function ConflictResolutionContent() {
                     Keep Disk Version
                   </p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    Discard your in-memory edits. The on-disk version (v{CONFLICT_META.theirs.version}, {CONFLICT_META.theirs.wordCount.toLocaleString()} words) is loaded into the editor. Your unsaved changes are lost.
+                    Discard your in-memory edits. The on-disk version (v{DEMO_CONFLICT.theirs.version}, {DEMO_CONFLICT.theirs.wordCount.toLocaleString()} words) is loaded into the editor. Your unsaved changes are lost.
                   </p>
                 </div>
               </label>
