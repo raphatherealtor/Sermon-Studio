@@ -22,6 +22,13 @@ jest.mock(
 beforeEach(() => {
   mockInvoke.mockReset();
   mockInvoke.mockResolvedValue(undefined);
+  // Simulate the native Tauri webview so the adapter reaches the (mocked)
+  // invoke bridge instead of short-circuiting as "unavailable".
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+});
+
+afterEach(() => {
+  delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
 describe('command surface completeness', () => {
