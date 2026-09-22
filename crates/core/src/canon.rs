@@ -9,6 +9,19 @@
 //!
 //! The builder is idempotent: it recreates the canon tables from scratch, so it
 //! can be re-run at any time from the raw sources.
+//!
+//! ## V1 extension (additive)
+//!
+//! This file is **extended**, not rewritten, by the V1 scaffold:
+//!   * [`schema_ext`] adds the `sources`/`topics`/`topic_verses`/`chain_edges`/
+//!     `canon_meta` tables and the new columns on existing tables.
+//!   * [`adapters`] declares the source registry and the per-dataset adapters.
+//!   * a [`schema_ext::CanonManifest`] is written into `canon_meta` at the end.
+//!
+//! The original ingestion logic below is unchanged.
+
+pub mod adapters;
+pub mod schema_ext;
 
 use crate::books::BOOKS;
 use crate::error::Result;
@@ -18,6 +31,9 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+/// Canon schema/data version. Bump when the canon data or schema changes.
+pub const CANON_VERSION: &str = "2025.01";
+
 /// Build canon.db at `out_path` from the clean data directory `clean_dir`.
 pub fn build_canon_db(clean_dir: &Path, out_path: &Path) -> Result<CanonStats> {
     if out_path.exists() {
@@ -26,6 +42,9 @@ pub fn build_canon_db(clean_dir: &Path, out_path: &Path) -> Result<CanonStats> {
     let mut conn = Connection::open(out_path)?;
     conn.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA cache_size=-64000;")?;
     conn.execute_batch(CANON_SCHEMA)?;
+
+    // V1: apply the additive extension (new tables + columns) before ingesting.
+    schema_ext::apply_canon_extensions(&conn)?;
 
     let mut stats = CanonStats::default();
 
@@ -184,7 +203,78 @@ pub fn build_canon_db(clean_dir: &Path, out_path: &Path) -> Result<CanonStats> {
          ANALYZE;",
     )?;
 
+    // 7. V1: register sources and write the version manifest.
+    let registry = adapters::default_registry();
+    adapters::register_sources(&conn, &registry)?;
+    let manifest = build_manifest(clean_dir, &registry);
+    manifest.write(&conn)?;
+
     Ok(stats)
+}
+
+/// Build the canon version manifest from the adapter registry and the clean dir.
+fn build_manifest(clean_dir: &Path, registry: &[Box<dyn adapters::CanonAdapter>]) -> schema_ext::CanonManifest {
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeMap;
+
+    let mut source_versions = BTreeMap::new();
+    let mut source_checksums = BTreeMap::new();
+    for a in registry {
+        let s = a.source();
+        source_versions.insert(s.id.clone(), s.version.clone().unwrap_or_else(|| "unversioned".to_string()));
+        // Checksum the TSV this adapter reads, if present.
+        let tsv = match s.id.as_str() {
+            "kjv-pd" => Some("verses.tsv"),
+            "strongs-pd" | "stepbible-tbesh" | "stepbible-tbesg" => Some("lexicon.tsv"),
+            "stepbible-tagnt" | "stepbible-tahot" => Some("verse_words.tsv"),
+            "openbible-xrefs" => Some("xrefs.tsv"),
+            "naves-topical" | "torrey-topical" => Some("topics.tsv"),
+            _ => None,
+        };
+        if let Some(name) = tsv {
+            let path = clean_dir.join(name);
+            if let Ok(bytes) = std::fs::read(&path) {
+                let mut h = Sha256::new();
+                h.update(&bytes);
+                source_checksums.insert(s.id.clone(), format!("{:x}", h.finalize()));
+            }
+        }
+    }
+
+    schema_ext::CanonManifest {
+        canon_version: CANON_VERSION.to_string(),
+        build_timestamp: reproducible_build_timestamp(),
+        source_versions,
+        source_checksums,
+    }
+}
+
+/// Reproducible build timestamp for the canon manifest.
+///
+/// Honors the [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/)
+/// convention: when the environment variable is set to a Unix timestamp (in
+/// seconds), that instant is used. Otherwise a fixed, documented epoch
+/// (`1970-01-01T00:00:00Z`) is used, so that identical normalized inputs always
+/// produce byte-identical manifests regardless of wall-clock time.
+fn reproducible_build_timestamp() -> String {
+    reproducible_timestamp_from(std::env::var("SOURCE_DATE_EPOCH").ok().as_deref())
+}
+
+/// Pure helper behind [`reproducible_build_timestamp`], split out so the rule
+/// can be tested without mutating process-global environment state.
+///
+/// Rule: if `source_date_epoch` parses as an integer number of Unix seconds, the
+/// timestamp is that instant rendered as RFC 3339 (UTC, second precision, `Z`).
+/// Otherwise the fixed fallback `1970-01-01T00:00:00Z` is returned.
+fn reproducible_timestamp_from(source_date_epoch: Option<&str>) -> String {
+    if let Some(raw) = source_date_epoch {
+        if let Ok(secs) = raw.trim().parse::<i64>() {
+            if let Some(dt) = chrono::TimeZone::timestamp_opt(&chrono::Utc, secs, 0).single() {
+                return dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            }
+        }
+    }
+    "1970-01-01T00:00:00Z".to_string()
 }
 
 fn opt(s: &str) -> Option<String> {
@@ -233,5 +323,83 @@ mod tests {
         assert_eq!(stats.lexicon, 1);
         assert_eq!(stats.verse_words, 2);
         assert_eq!(stats.cross_references, 1);
+    }
+
+    #[test]
+    fn build_writes_manifest_and_registers_sources() {
+        let tmp = tempfile::tempdir().unwrap();
+        let clean = tmp.path();
+        std::fs::write(clean.join("verses.tsv"), "45\t8\t28\tAnd we know...\n").unwrap();
+        let db = tmp.path().join("canon.db");
+        build_canon_db(clean, &db).unwrap();
+
+        let conn = Connection::open(&db).unwrap();
+        let sources: i64 = conn.query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0)).unwrap();
+        assert_eq!(sources, 9);
+        let manifest = schema_ext::CanonManifest::read(&conn).unwrap().unwrap();
+        assert_eq!(manifest.canon_version, CANON_VERSION);
+        assert!(manifest.source_versions.contains_key("openbible-xrefs"));
+        // Checksum recorded for the verses.tsv we wrote.
+        assert!(manifest.source_checksums.contains_key("kjv-pd"));
+    }
+
+    #[test]
+    fn rebuild_is_deterministic_in_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let clean = tmp.path();
+        std::fs::write(clean.join("verses.tsv"), "45\t8\t28\tAnd we know...\n45\t8\t29\tFor whom...\n").unwrap();
+        std::fs::write(clean.join("xrefs.tsv"), "45\t8\t28\t45\t8\t29\t50\n").unwrap();
+
+        let db1 = tmp.path().join("a.db");
+        let db2 = tmp.path().join("b.db");
+        let s1 = build_canon_db(clean, &db1).unwrap();
+        let s2 = build_canon_db(clean, &db2).unwrap();
+        assert_eq!(s1.verses, s2.verses);
+        assert_eq!(s1.cross_references, s2.cross_references);
+
+        // Content-level determinism: same verse text and same xref set.
+        let c1 = Connection::open(&db1).unwrap();
+        let c2 = Connection::open(&db2).unwrap();
+        let t1: String = c1.query_row("SELECT text_kjv FROM bible_verses WHERE book_num=45 AND chapter=8 AND verse=28", [], |r| r.get(0)).unwrap();
+        let t2: String = c2.query_row("SELECT text_kjv FROM bible_verses WHERE book_num=45 AND chapter=8 AND verse=28", [], |r| r.get(0)).unwrap();
+        assert_eq!(t1, t2);
+        let x1: i64 = c1.query_row("SELECT COUNT(*) FROM cross_references", [], |r| r.get(0)).unwrap();
+        let x2: i64 = c2.query_row("SELECT COUNT(*) FROM cross_references", [], |r| r.get(0)).unwrap();
+        assert_eq!(x1, x2);
+    }
+
+    #[test]
+    fn manifest_build_timestamp_is_reproducible() {
+        // Two builds from identical normalized input must produce identical
+        // manifest semantic content, including the build timestamp.
+        let tmp = tempfile::tempdir().unwrap();
+        let clean = tmp.path();
+        std::fs::write(clean.join("verses.tsv"), "45\t8\t28\tAnd we know...\n").unwrap();
+        std::fs::write(clean.join("xrefs.tsv"), "45\t8\t28\t45\t8\t29\t50\n").unwrap();
+
+        let db1 = tmp.path().join("a.db");
+        let db2 = tmp.path().join("b.db");
+        build_canon_db(clean, &db1).unwrap();
+        build_canon_db(clean, &db2).unwrap();
+
+        let c1 = Connection::open(&db1).unwrap();
+        let c2 = Connection::open(&db2).unwrap();
+        let m1 = schema_ext::CanonManifest::read(&c1).unwrap().unwrap();
+        let m2 = schema_ext::CanonManifest::read(&c2).unwrap().unwrap();
+        assert_eq!(m1.build_timestamp, m2.build_timestamp);
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn reproducible_timestamp_rule_is_deterministic() {
+        // SOURCE_DATE_EPOCH is honored when supplied (Unix seconds -> RFC 3339 UTC).
+        assert_eq!(reproducible_timestamp_from(Some("0")), "1970-01-01T00:00:00Z");
+        assert_eq!(reproducible_timestamp_from(Some("1735689600")), "2025-01-01T00:00:00Z");
+        // Surrounding whitespace is tolerated.
+        assert_eq!(reproducible_timestamp_from(Some(" 1735689600 ")), "2025-01-01T00:00:00Z");
+        // A fixed, documented fallback is used when absent or unparseable.
+        assert_eq!(reproducible_timestamp_from(None), "1970-01-01T00:00:00Z");
+        assert_eq!(reproducible_timestamp_from(Some("not-a-number")), "1970-01-01T00:00:00Z");
+        assert_eq!(reproducible_timestamp_from(Some("")), "1970-01-01T00:00:00Z");
     }
 }

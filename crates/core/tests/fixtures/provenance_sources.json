@@ -1,0 +1,37 @@
+[
+  {
+    "source_id": "stepbible-tagnt",
+    "source_label": "STEPBible TAGNT",
+    "license_code": "CC-BY-4.0",
+    "attribution": "STEPBible TAGNT (Tyndale House, Cambridge), CC BY 4.0.",
+    "source_version": "1.0.0"
+  },
+  {
+    "source_id": "openbible-xrefs",
+    "source_label": "OpenBible.info Cross References",
+    "license_code": "CC-BY-4.0",
+    "attribution": "OpenBible.info cross-references, CC BY 4.0.",
+    "source_version": "1.0.0"
+  },
+  {
+    "source_id": "strongs-pd",
+    "source_label": "Strong's Exhaustive Concordance",
+    "license_code": "PD",
+    "attribution": "Strong's Exhaustive Concordance (1890), public domain.",
+    "source_version": "1.0.0"
+  },
+  {
+    "source_id": "naves-topical",
+    "source_label": "Nave's Topical Bible",
+    "license_code": "PD",
+    "attribution": "Nave's Topical Bible (1896), public domain.",
+    "source_version": "1.0.0"
+  },
+  {
+    "source_id": "torrey-topical",
+    "source_label": "Torrey's New Topical Textbook",
+    "license_code": "PD",
+    "attribution": "Torrey's New Topical Textbook (1897), public domain.",
+    "source_version": "1.0.0"
+  }
+]

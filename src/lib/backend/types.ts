@@ -2,6 +2,8 @@
 // TypeScript defines types and transport contracts only.
 // Rust owns: parsing, AST validation, linting logic, SQLite, filesystem, Typst, PDF.
 
+import type { Provenance, ProvenanceClass } from './contracts/provenance';
+
 // ── Sermon core ──────────────────────────────────────────────────────────────
 
 export interface SermonSummary {
@@ -459,6 +461,18 @@ export interface RevealFileRequest {
 }
 
 export type IntelligenceKind = 'related-sermon' | 'passage-history' | 'reference-overlap' | 'big-idea-overlap' | 'series-overlap' | 'illustration-pattern' | 'structure-overlap';
-export interface IntelligenceEvidence { kind: string; label: string; value: string; weight: number; sermonIds: string[]; references: string[]; }
+export interface IntelligenceEvidence { kind: string; label: string; value: string; weight: number; sermonIds: string[]; references: string[]; provenance: Provenance; }
 export interface IntelligenceInsight { id: string; kind: IntelligenceKind; title: string; summary: string; score: number; evidence: IntelligenceEvidence[]; relatedSermonIds: string[]; }
-export interface IntelligenceResult { engineVersion: string; generatedAt: string; subjectSermonId?: string; subjectReference?: string; insights: IntelligenceInsight[]; }
+/** Audit: what fed a scoring run. Mirrors the Rust `IntelligenceInputs`. */
+export interface IntelligenceInputs { provenanceClasses: ProvenanceClass[]; archiveFingerprint?: string; }
+/** Audit: the exact weights a scoring run applied. Mirrors the Rust `IntelligenceWeights`. */
+export interface IntelligenceWeights { primaryPassageOverlap: number; referenceOverlap: number; bigIdeaOverlap: number; titleOverlap: number; seriesOverlap: number; illustrationPattern: number; structureOverlap: number; }
+export interface IntelligenceResult { engineVersion: string; generatedAt: string; subjectSermonId?: string; subjectReference?: string; inputs?: IntelligenceInputs; weights?: IntelligenceWeights; insights: IntelligenceInsight[]; }
+
+// ── V1 contract re-exports ───────────────────────────────────────────────────
+// The V1 scaffold adds frozen contracts as isolated modules so they can be
+// reviewed and merged independently of this file. They are re-exported here so
+// existing imports from `./types` keep working. Track J's Intelligence types
+// above remain authoritative and are NOT duplicated here.
+export * from './contracts/provenance';
+export * from './contracts/research_packet';

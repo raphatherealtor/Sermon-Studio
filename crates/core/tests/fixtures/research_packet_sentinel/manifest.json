@@ -1,0 +1,25 @@
+{
+  "packet_version": "1",
+  "sermon_id": "11111111-1111-4111-8111-111111111111",
+  "attachments": [
+    {
+      "id": "att-sentinel",
+      "original_filename": "external-article.pdf",
+      "stored_filename": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.pdf",
+      "title": "External Article",
+      "author": "Someone Else",
+      "source": "https://example.org/article",
+      "date_added": "2025-01-01T00:00:00Z",
+      "mime_type": "application/pdf",
+      "byte_size": 4096,
+      "page_count": 1,
+      "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "extraction": "ok",
+      "import_provenance": {
+        "imported_from": "/home/pastor/external-article.pdf",
+        "imported_at": "2025-01-01T00:00:00Z"
+      },
+      "provenance_class": "research-packet"
+    }
+  ]
+}

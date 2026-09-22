@@ -1,11 +1,53 @@
 //! Deterministic, offline sermon correlation with inspectable evidence.
+//!
+//! # Track J engine (authoritative) + V1 scaffold reconciliation
+//!
+//! This module is Track J's authoritative Sermon Intelligence engine. The V1
+//! scaffold is reconciled *around* it — the scoring design, insight-kind
+//! vocabulary, DTO field names, and ranking behaviour are unchanged. The
+//! reconciliation is strictly additive:
+//!
+//! 1. **Provenance on every evidence item.** [`Evidence`] gains a `provenance`
+//!    field (see [`crate::provenance`]). Track J's existing fields
+//!    (`kind`, `label`, `value`, `weight`, `sermon_ids`, `references`) are
+//!    untouched. Every evidence item the engine emits is derived from the
+//!    pastor's own archive, so its provenance is always
+//!    [`ProvenanceClass::YourArchive`] — the only lifetime corpus.
+//! 2. **A real admission guard.** [`admit_evidence`] is the single choke point
+//!    through which the engine routes evidence. It drops anything that is not
+//!    lifetime corpus or static biblical study, so research-packet content can
+//!    never become evidence.
+//! 3. **Auditable inputs/weights.** [`IntelligenceResult`] gains `inputs` and
+//!    `weights`. The weights are the exact Track J scoring weights, now named
+//!    constants shared by the scorer and the audit record so they cannot drift.
+//!
+//! The evidence-is-the-explanation rule is preserved: there is no free-text
+//! reasoning field, `summary` is a deterministic short label, and every insight
+//! carries at least one evidence item ([`Insight::is_valid`]).
 
 use crate::error::Result;
+use crate::provenance::{Provenance, ProvenanceClass};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub const ENGINE_VERSION: &str = "sermon-intelligence-1.0";
+
+// ── Track J scoring weights (frozen; shared by scorer and audit record) ──────
+/// Weight for a shared primary passage.
+pub const W_PRIMARY_PASSAGE_OVERLAP: f64 = 0.30;
+/// Weight for shared scripture references.
+pub const W_REFERENCE_OVERLAP: f64 = 0.25;
+/// Weight for shared Big Idea terms.
+pub const W_BIG_IDEA_OVERLAP: f64 = 0.20;
+/// Weight for shared title terms.
+pub const W_TITLE_OVERLAP: f64 = 0.10;
+/// Weight for a shared series.
+pub const W_SERIES_OVERLAP: f64 = 0.10;
+/// Weight for shared illustrations.
+pub const W_ILLUSTRATION_PATTERN: f64 = 0.03;
+/// Weight for a shared indexed structure and movement count.
+pub const W_STRUCTURE_OVERLAP: f64 = 0.02;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -14,7 +56,59 @@ pub struct IntelligenceResult {
     pub generated_at: String,
     pub subject_sermon_id: Option<String>,
     pub subject_reference: Option<String>,
+    /// Audit: what fed this run. Additive; does not affect scoring.
+    pub inputs: IntelligenceInputs,
+    /// Audit: the exact weights applied. Additive; does not affect scoring.
+    pub weights: IntelligenceWeights,
     pub insights: Vec<Insight>,
+}
+
+/// Inputs a scoring run consumed, for reproducibility/audit.
+///
+/// Track J's engine reads only the pastor's own archive (`pastor.db`), so
+/// `provenance_classes` is always `[your-archive]`. This is recorded explicitly
+/// so a reviewer can see that no non-lifetime-corpus source ever feeds an
+/// insight.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IntelligenceInputs {
+    /// Provenance classes that fed this run.
+    pub provenance_classes: Vec<ProvenanceClass>,
+    /// Deterministic fingerprint of the archive index state
+    /// (`MAX(last_indexed_at)`), or `None` when the archive is empty.
+    pub archive_fingerprint: Option<String>,
+}
+
+/// The exact scoring weights applied by the engine, for reproducibility/audit.
+///
+/// These are the frozen Track J weights. They are defined once as constants and
+/// used both by the scorer and by this record, so the audit view can never drift
+/// from the behaviour.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IntelligenceWeights {
+    pub primary_passage_overlap: f64,
+    pub reference_overlap: f64,
+    pub big_idea_overlap: f64,
+    pub title_overlap: f64,
+    pub series_overlap: f64,
+    pub illustration_pattern: f64,
+    pub structure_overlap: f64,
+}
+
+impl IntelligenceWeights {
+    /// The engine's frozen default weights (Track J values, verbatim).
+    pub fn engine_defaults() -> Self {
+        IntelligenceWeights {
+            primary_passage_overlap: W_PRIMARY_PASSAGE_OVERLAP,
+            reference_overlap: W_REFERENCE_OVERLAP,
+            big_idea_overlap: W_BIG_IDEA_OVERLAP,
+            title_overlap: W_TITLE_OVERLAP,
+            series_overlap: W_SERIES_OVERLAP,
+            illustration_pattern: W_ILLUSTRATION_PATTERN,
+            structure_overlap: W_STRUCTURE_OVERLAP,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -29,6 +123,15 @@ pub struct Insight {
     pub related_sermon_ids: Vec<String>,
 }
 
+impl Insight {
+    /// **Evidence is the explanation.** An insight is valid iff it carries at
+    /// least one evidence item. There is intentionally no free-text reasoning
+    /// field; `summary` is a deterministic short label.
+    pub fn is_valid(&self) -> bool {
+        !self.evidence.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Evidence {
@@ -38,6 +141,24 @@ pub struct Evidence {
     pub weight: f64,
     pub sermon_ids: Vec<String>,
     pub references: Vec<String>,
+    /// Where this evidence came from. Track J evidence is always derived from
+    /// the pastor's own archive, so this is always `your-archive`.
+    pub provenance: Provenance,
+}
+
+/// **The constitutional admission guard.**
+///
+/// Only lifetime-corpus (`your-archive`) and static biblical-study provenance
+/// may become Sermon Intelligence evidence. Research-packet content — and any
+/// other class — is dropped here. The engine routes every evidence item through
+/// this single choke point, so packet content can never become evidence even if
+/// a future change tried to inject it.
+pub fn admit_evidence(evidence: Evidence) -> Option<Evidence> {
+    if crate::research_packet::is_intelligence_eligible(&evidence.provenance) {
+        Some(evidence)
+    } else {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -72,7 +193,7 @@ pub fn related_sermons(
             "primary-passage-overlap",
             "Same primary passage",
             subject.passage == candidate.passage && !subject.passage.is_empty(),
-            0.30,
+            W_PRIMARY_PASSAGE_OVERLAP,
             &candidate.id,
             &subject.passage,
         );
@@ -85,7 +206,7 @@ pub fn related_sermons(
             "reference-overlap",
             "Shared scripture references",
             &shared_refs,
-            0.25,
+            W_REFERENCE_OVERLAP,
             &candidate.id,
         );
         add_terms(
@@ -94,7 +215,7 @@ pub fn related_sermons(
             "Shared Big Idea terms",
             &subject.big_idea,
             &candidate.big_idea,
-            0.20,
+            W_BIG_IDEA_OVERLAP,
             &candidate.id,
         );
         add_terms(
@@ -103,7 +224,7 @@ pub fn related_sermons(
             "Shared title terms",
             &subject.title,
             &candidate.title,
-            0.10,
+            W_TITLE_OVERLAP,
             &candidate.id,
         );
         add_bool(
@@ -111,7 +232,7 @@ pub fn related_sermons(
             "series-overlap",
             "Same series",
             subject.series.is_some() && subject.series == candidate.series,
-            0.10,
+            W_SERIES_OVERLAP,
             &candidate.id,
             subject.series.as_deref().unwrap_or(""),
         );
@@ -121,7 +242,7 @@ pub fn related_sermons(
             "illustration-pattern",
             "Shared illustrations",
             &shared_ill,
-            0.03,
+            W_ILLUSTRATION_PATTERN,
             &candidate.id,
         );
         let structure_match = subject.structure == candidate.structure
@@ -131,7 +252,7 @@ pub fn related_sermons(
             "structure-overlap",
             "Same indexed structure and movement count",
             structure_match,
-            0.02,
+            W_STRUCTURE_OVERLAP,
             &candidate.id,
             &format!(
                 "{}; movements={}",
@@ -139,6 +260,10 @@ pub fn related_sermons(
                 movement_count(&subject.body)
             ),
         );
+        // Constitutional admission: drop any evidence that is not lifetime
+        // corpus / biblical study. Track J evidence is always archive-derived,
+        // so this is a no-op today — but it makes the guard real and enforced.
+        let evidence: Vec<Evidence> = evidence.into_iter().filter_map(admit_evidence).collect();
         if evidence.is_empty() {
             continue;
         }
@@ -194,14 +319,18 @@ pub fn passage_history(conn: &Connection, reference: &str) -> Result<Intelligenc
         })
         .collect::<Vec<_>>()
         .join("; ");
-    let evidence = vec![Evidence {
+    let evidence: Vec<Evidence> = vec![Evidence {
         kind: "passage-history".into(),
         label: "Indexed sermons with exact primary passage".into(),
         value: details,
         weight: 1.0,
         sermon_ids: ids.clone(),
         references: vec![reference.into()],
-    }];
+        provenance: Provenance::your_archive(ids.first().cloned().unwrap_or_default()),
+    }]
+    .into_iter()
+    .filter_map(admit_evidence)
+    .collect();
     Ok(result(
         conn,
         None,
@@ -219,11 +348,23 @@ pub fn passage_history(conn: &Connection, reference: &str) -> Result<Intelligenc
 }
 
 fn result(conn: &Connection, id: Option<&str>, reference: Option<&str>, insights: Vec<Insight>) -> IntelligenceResult {
+    let generated_at: String = conn
+        .query_row(
+            "SELECT COALESCE(MAX(last_indexed_at),'1970-01-01T00:00:00Z') FROM sermon_index",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into());
     IntelligenceResult {
         engine_version: ENGINE_VERSION.into(),
-        generated_at: conn.query_row("SELECT COALESCE(MAX(last_indexed_at),'1970-01-01T00:00:00Z') FROM sermon_index", [], |r| r.get(0)).unwrap_or_else(|_| "1970-01-01T00:00:00Z".into()),
+        generated_at: generated_at.clone(),
         subject_sermon_id: id.map(str::to_string),
         subject_reference: reference.map(str::to_string),
+        inputs: IntelligenceInputs {
+            provenance_classes: vec![ProvenanceClass::YourArchive],
+            archive_fingerprint: Some(generated_at),
+        },
+        weights: IntelligenceWeights::engine_defaults(),
         insights,
     }
 }
@@ -287,6 +428,7 @@ fn add_terms(
             weight: round6(max * x.len() as f64 / denom),
             sermon_ids: vec![id.into()],
             references: vec![],
+            provenance: Provenance::your_archive(id),
         })
     }
 }
@@ -311,6 +453,7 @@ fn add_bool(
             } else {
                 vec![]
             },
+            provenance: Provenance::your_archive(id),
         })
     }
 }
@@ -334,6 +477,7 @@ fn add_set(
             } else {
                 vec![]
             },
+            provenance: Provenance::your_archive(id),
         })
     }
 }
@@ -455,5 +599,71 @@ mod tests {
         let r = passage_history(&c, "Rom.8.28").unwrap();
         assert_eq!(r.insights[0].related_sermon_ids, ["a", "b"]);
         assert_eq!(r.insights[0].evidence[0].references, ["Rom.8.28"]);
+    }
+
+    // ── V1 reconciliation tests (additive) ──────────────────────────────────
+
+    #[test]
+    fn every_evidence_item_is_archive_provenance_and_insights_are_valid() {
+        let c = db();
+        for r in [
+            related_sermons(&c, "a", 10).unwrap(),
+            sermon_insights(&c, "a", 10).unwrap(),
+            passage_history(&c, "Rom.8.28").unwrap(),
+        ] {
+            for insight in &r.insights {
+                assert!(insight.is_valid(), "every insight must carry evidence");
+                for e in &insight.evidence {
+                    assert_eq!(e.provenance.class, ProvenanceClass::YourArchive);
+                    assert!(crate::provenance::is_lifetime_corpus(&e.provenance));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn admission_guard_drops_packet_evidence() {
+        let packet = Evidence {
+            kind: "reference-overlap".into(),
+            label: "External article".into(),
+            value: "RESEARCH_PACKET_SENTINEL_9F3A7".into(),
+            weight: 0.5,
+            sermon_ids: vec!["a".into()],
+            references: vec![],
+            provenance: Provenance::research_packet(
+                "a",
+                "att-1",
+                "Research packet: x.pdf",
+                Some(1),
+            ),
+        };
+        assert!(admit_evidence(packet).is_none());
+        // Control: archive evidence is admitted.
+        let archive = Evidence {
+            kind: "reference-overlap".into(),
+            label: "Romans 8:28".into(),
+            value: "Rom.8.28".into(),
+            weight: 0.9,
+            sermon_ids: vec!["b".into()],
+            references: vec!["Rom.8.28".into()],
+            provenance: Provenance::your_archive("b"),
+        };
+        assert!(admit_evidence(archive).is_some());
+    }
+
+    #[test]
+    fn audit_inputs_and_weights_are_deterministic_and_frozen() {
+        let c = db();
+        let r = related_sermons(&c, "a", 10).unwrap();
+        assert_eq!(r.inputs.provenance_classes, vec![ProvenanceClass::YourArchive]);
+        assert_eq!(r.weights, IntelligenceWeights::engine_defaults());
+        // The frozen Track J weights, verbatim.
+        assert_eq!(r.weights.primary_passage_overlap, 0.30);
+        assert_eq!(r.weights.reference_overlap, 0.25);
+        assert_eq!(r.weights.big_idea_overlap, 0.20);
+        assert_eq!(r.weights.title_overlap, 0.10);
+        assert_eq!(r.weights.series_overlap, 0.10);
+        assert_eq!(r.weights.illustration_pattern, 0.03);
+        assert_eq!(r.weights.structure_overlap, 0.02);
     }
 }
