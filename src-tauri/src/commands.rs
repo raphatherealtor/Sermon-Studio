@@ -38,6 +38,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "get_strongs",
     "get_cross_references",
     "get_preached_on",
+    "get_chain_study",
     "sync_index",
     "rebuild_index",
     "rescan_library",
@@ -314,6 +315,19 @@ pub fn get_preached_on(
 ) -> ApiResult<Vec<dto::PreachedResultDto>> {
     let conn = state.pastor().map_err(|e| e.to_string())?;
     core_api::get_preached_on(&conn, &reference)
+}
+
+/// Chain Study (Wave 5 / Track N). Both vaults are optional at the seam: a
+/// missing canon.db degrades to `canonAvailable: false`; a missing pastor.db
+/// degrades to an empty "From Your Archive" overlay.
+#[tauri::command]
+pub fn get_chain_study(
+    state: State<AppState>,
+    reference: String,
+) -> ApiResult<sermon_core::chain_study::ChainStudyResult> {
+    let canon = state.canon().ok();
+    let pastor = state.pastor().ok();
+    core_api::get_chain_study(canon.as_ref(), pastor.as_ref(), &reference)
 }
 
 // ---------------------------------------------------------------------------
@@ -830,7 +844,7 @@ mod tests {
             .expect("read build.rs");
         assert_eq!(
             COMMAND_NAMES.len(),
-            51,
+            52,
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {

@@ -111,6 +111,7 @@ pub fn run() {
             commands::get_strongs,
             commands::get_cross_references,
             commands::get_preached_on,
+            commands::get_chain_study,
             commands::sync_index,
             commands::rebuild_index,
             commands::rescan_library,

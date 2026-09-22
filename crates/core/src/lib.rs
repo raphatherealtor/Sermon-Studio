@@ -35,6 +35,7 @@
 pub mod atomic_save;
 pub mod books;
 pub mod canon;
+pub mod chain_study;
 pub mod directive;
 pub mod error;
 pub mod export;

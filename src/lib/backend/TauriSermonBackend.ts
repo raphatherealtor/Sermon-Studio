@@ -44,8 +44,7 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
-  IntelligenceResult,
-} from './types';
+  IntelligenceResult, ChainStudyResult } from './types';
 import { isTauriRuntime } from './runtime';
 
 // Dynamic import isolates Tauri dependency from the browser bundle.
@@ -159,6 +158,9 @@ export class TauriSermonBackend implements SermonBackend {
   }
   async getPreachedOn(reference: string): Promise<PreachedResult[]> {
     return tauriInvoke('get_preached_on', { reference });
+  }
+  async getChainStudy(reference: string): Promise<ChainStudyResult> {
+    return tauriInvoke('get_chain_study', { reference });
   }
   async syncIndex(): Promise<IndexOperationResult> {
     return tauriInvoke('sync_index');

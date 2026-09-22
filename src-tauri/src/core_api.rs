@@ -10,7 +10,7 @@ use crate::config::AppConfig;
 use crate::dto;
 use crate::dto::*;
 use rusqlite::{params, Connection, OptionalExtension};
-use sermon_core::{export, indexer, linter, reconcile, reference, retrieval, sermon};
+use sermon_core::{chain_study, export, indexer, linter, reconcile, reference, retrieval, sermon};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -1125,6 +1125,34 @@ pub fn get_preached_on(conn: &Connection, reference: &str) -> ApiResult<Vec<Prea
             series: h.series,
         })
         .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Chain Study (Wave 5 / Track N — deterministic offline engine)
+// ---------------------------------------------------------------------------
+
+/// Deterministic Chain Study for a seed reference.
+///
+/// `canon` is optional-shaped at the command layer: a missing/empty/pre-extension
+/// canon vault yields `canonAvailable: false` (calm unavailable state), never an
+/// error. The pastor archive overlay is additive only — it can never mutate the
+/// biblical chain.
+pub fn get_chain_study(
+    canon: Option<&Connection>,
+    pastor: Option<&Connection>,
+    reference: &str,
+) -> ApiResult<chain_study::ChainStudyResult> {
+    let Some(conn) = canon else {
+        return Ok(chain_study::ChainStudyResult {
+            engine_version: chain_study::ENGINE_VERSION.to_string(),
+            seed_reference: reference.trim().to_string(),
+            canon_available: false,
+            chains: Vec::new(),
+            archive_connections: Vec::new(),
+            parameters: chain_study::ChainStudyParameters::engine_defaults(),
+        });
+    };
+    chain_study::chain_study(conn, pastor, reference).map_err(err)
 }
 
 // ---------------------------------------------------------------------------

@@ -37,8 +37,7 @@ import type {
   IntelligenceResult,
   IntelligenceInsight,
   IntelligenceEvidence,
-  Provenance,
-} from './types';
+  Provenance, ChainStudyResult } from './types';
 // Fix 5: Import the shared frontend codec — MockSermonBackend provides fixtures only,
 // not the codec implementation.
 import { testRoundTrip } from '@/editor/codec/directiveCodec';
@@ -984,6 +983,41 @@ export class MockSermonBackend implements SermonBackend {
       ],
     };
     return xrefs[reference] || xrefs['default'];
+  }
+
+  async getChainStudy(reference: string): Promise<ChainStudyResult> {
+    await delay(250);
+    // Deterministic preview fixture — same shape as the Rust engine emits.
+    const canonicalStudy: Provenance = {
+      class: 'biblical-study', sourceId: 'openbible-xrefs', sourceLabel: 'OpenBible.info Cross References',
+      licenseCode: 'CC-BY-4.0', attribution: 'OpenBible.info Cross References (OpenBible.info), CC BY 4.0.',
+    };
+    const yourArchive: Provenance = { class: 'your-archive', sourceLabel: 'Your archive', sermonId: 'sermon-003' };
+    return {
+      engineVersion: 'chain-study-1.0',
+      seedReference: 'John.6.35',
+      canonAvailable: true,
+      chains: [{
+        id: 'chain-John.6.35',
+        name: 'Bread of Life',
+        seedReference: 'John.6.35',
+        references: [
+          { reference: 'John 6:37', distance: 1, weight: 0.36, provenance: canonicalStudy },
+          { reference: 'John 6:44', distance: 1, weight: 0.3, provenance: canonicalStudy },
+          { reference: 'John 6:47', distance: 2, weight: 0.18, provenance: canonicalStudy },
+        ],
+        score: 0.84,
+        evidence: [
+          { kind: 'cross-reference', label: 'Cross-reference (rank 60)', value: 'John 6:35', weight: 0.36, provenance: canonicalStudy },
+          { kind: 'sourced-topic', label: 'Bread of Life', value: 'top-bread-of-life', weight: 0.1, provenance: canonicalStudy },
+        ],
+        sourceTopics: ['Bread of Life'],
+      }],
+      archiveConnections: [
+        { sermonId: 'sermon-003', title: 'The Good Shepherd', primaryPassage: 'John 10:11-John 10:18', matchingReferences: ['John 6:37'], provenance: yourArchive },
+      ],
+      parameters: { maxSearchDepth: 2, maxNeighborsPerNode: 6, maxChainReferences: 12, maxChains: 5, maxArchiveConnections: 10 },
+    };
   }
 
   async getPreachedOn(reference: string): Promise<PreachedResult[]> {

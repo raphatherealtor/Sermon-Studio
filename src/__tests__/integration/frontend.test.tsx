@@ -93,6 +93,7 @@ function createStubBackend(overrides: Partial<SermonBackend> = {}): SermonBacken
     parseReferences: jest.fn().mockResolvedValue([]),
     lintSermon: jest.fn().mockResolvedValue(STUB_LINT_FINDINGS),
     getPassage: jest.fn().mockResolvedValue({ reference: 'John 3:16', text: 'For God so loved the world.', translation: 'KJV', verses: [] }),
+    getChainStudy: jest.fn().mockResolvedValue({ engineVersion: 'chain-study-1.0', seedReference: 'John.3.16', canonAvailable: false, chains: [], archiveConnections: [], parameters: { maxSearchDepth: 2, maxNeighborsPerNode: 6, maxChainReferences: 12, maxChains: 5, maxArchiveConnections: 10 } }),
     getStrongs: jest.fn().mockResolvedValue(STUB_STRONGS),
     getCrossReferences: jest.fn().mockResolvedValue([]),
     getPreachedOn: jest.fn().mockResolvedValue([]),

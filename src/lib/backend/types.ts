@@ -309,6 +309,62 @@ export interface PreachedResult {
   wordCount?: number;
 }
 
+// ── Chain Study (Wave 5 / Track N — deterministic offline engine) ─────────────
+// Mirrors crates/core/src/chain_study.rs (serde camelCase). Provenance reuses
+// the frozen contract from contracts/provenance.ts — no duplicate model.
+
+export type ChainStudyEngineVersion = 'chain-study-1.0';
+
+export interface ChainStudyParameters {
+  maxSearchDepth: number;
+  maxNeighborsPerNode: number;
+  maxChainReferences: number;
+  maxChains: number;
+  maxArchiveConnections: number;
+}
+
+export interface ChainStudyEvidence {
+  kind: 'cross-reference' | 'rule-edge' | 'sourced-topic' | string;
+  label: string;
+  value: string;
+  weight: number;
+  provenance: Provenance;
+}
+
+export interface ChainStudyReference {
+  reference: string;
+  distance: number;
+  weight: number;
+  provenance: Provenance;
+}
+
+export interface ChainStudyChain {
+  id: string;
+  name: string | null;
+  seedReference: string;
+  references: ChainStudyReference[];
+  score: number;
+  evidence: ChainStudyEvidence[];
+  sourceTopics: string[];
+}
+
+export interface ChainStudyArchiveConnection {
+  sermonId: string;
+  title: string;
+  primaryPassage: string;
+  matchingReferences: string[];
+  provenance: Provenance;
+}
+
+export interface ChainStudyResult {
+  engineVersion: string;
+  seedReference: string;
+  canonAvailable: boolean;
+  chains: ChainStudyChain[];
+  archiveConnections: ChainStudyArchiveConnection[];
+  parameters: ChainStudyParameters;
+}
+
 // ── Index / archive ───────────────────────────────────────────────────────────
 
 export interface IndexOperationResult {
