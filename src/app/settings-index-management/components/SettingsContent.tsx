@@ -4,9 +4,10 @@ import { useBackend } from '@/lib/backend/BackendContext';
 import { Settings, Database, FileOutput, Type, RefreshCw, RotateCcw, CheckCircle, XCircle, Loader2, ChevronRight, Info, Code2, Keyboard, FolderOpen, BookOpen, Wrench,  } from 'lucide-react';
 import type { IndexOperationResult, IndexStatus, AppSettings } from '@/lib/backend/types';
 import Icon from '@/components/ui/AppIcon';
+import { requestTourReplay } from '@/lib/onboarding/firstRun';
 
 
-type SettingsSection = 'library' | 'index' | 'appearance' | 'editor' | 'export' | 'shortcuts' | 'developer';
+type SettingsSection = 'library' | 'index' | 'appearance' | 'editor' | 'export' | 'shortcuts' | 'developer' | 'about';
 
 const SECTIONS: { id: SettingsSection; label: string; icon: React.ElementType }[] = [
   { id: 'library', label: 'Sermon Library', icon: BookOpen },
@@ -16,6 +17,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: React.ElementType }[
   { id: 'export', label: 'Export Defaults', icon: FileOutput },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
   { id: 'developer', label: 'Developer Tools', icon: Code2 },
+  { id: 'about', label: 'About', icon: Info },
 ];
 
 function Toggle({ active, onToggle, label }: { active: boolean; onToggle: () => void; label: string }) {
@@ -544,6 +546,34 @@ export default function SettingsContent() {
                 <button onClick={saveSettings} className="btn-primary">
                   <CheckCircle size={12} /> Save Developer Settings
                 </button>
+              </div>
+            )}
+
+            {activeSection === 'about' && (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-base font-600 text-fg mb-1">About Sermon Studio</h2>
+                  <p className="text-xs text-fg-dim">Built to preserve a lifetime of preaching.</p>
+                </div>
+                <div className="card-panel space-y-3">
+                  <p className="text-sm text-fg-dim leading-relaxed">
+                    In honor of forty years of ministry and preaching. Sermon Studio was created
+                    to preserve a lifetime of study, proclamation, and pastoral work — and to make
+                    that body of work easier to revisit, understand, and carry forward.
+                  </p>
+                  <div>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => requestTourReplay()}
+                      data-testid="settings-show-tour"
+                    >
+                      <RotateCcw size={12} /> Show tour again
+                    </button>
+                  </div>
+                  <p className="text-2xs text-fg-dim">
+                    The welcome and tour reappear the next time the library view is shown.
+                  </p>
+                </div>
               </div>
             )}
           </div>
