@@ -146,34 +146,51 @@ def parse_ref(s):
     return (b, int(m.group(2)), int(m.group(3)))
 
 
+def parse_ref_range(s):
+    """Parse a dotted reference, or a same-book/chapter range `A.B.c-A.B.d`,
+    into the list of (book, chapter, verse) it covers."""
+    s = s.strip()
+    if '-' in s:
+        left, right = s.split('-', 1)
+        a = parse_ref(left)
+        b = parse_ref(right)
+        if not a or not b:
+            return None
+        if a[0] != b[0] or a[1] != b[1]:
+            return None
+        lo, hi = (a[2], b[2]) if a[2] <= b[2] else (b[2], a[2])
+        if hi - lo > 200:
+            return None
+        return [(a[0], a[1], v) for v in range(lo, hi + 1)]
+    r = parse_ref(s)
+    return [r] if r else None
+
+
 # ── Normalizers (each returns a sorted list of rows) ─────────────────────────
 
 def etl_verses(raw, warn):
-    src = os.path.join(raw, "KJV.csv")
+    # KJV text. Raw CSV `t_kjv.csv`: id,b,c,v,t (numeric book number, quoted text).
+    src = os.path.join(raw, "t_kjv.csv")
     if not os.path.exists(src):
         return []
     rows = []
     with open(src, encoding="utf-8") as f:
         next(f, None)
-        for i, line in enumerate(f):
+        for line in f:
             if not line.strip():
                 continue
             fld = parse_csv_line(line)
-            if len(fld) < 4:
-                continue
-            b = norm_book(fld[0])
-            if b is None:
-                warn(f"verses: unknown book {fld[0]!r}")
+            if len(fld) < 5:
                 continue
             try:
-                ch, vs = int(fld[1]), int(fld[2])
+                b, c, v = int(fld[1]), int(fld[2]), int(fld[3])
             except ValueError:
-                warn(f"verses: bad reference {fld[1]}:{fld[2]}")
+                warn(f"verses: bad reference {fld[1]}:{fld[2]}:{fld[3]}")
                 continue
-            if ch < 1 or vs < 1:
-                warn(f"verses: rejected chapter/verse {ch}:{vs}")
+            if not (1 <= b <= 66 and c >= 1 and v >= 1):
+                warn(f"verses: rejected {b}:{c}:{v}")
                 continue
-            rows.append((b, ch, vs, norm_text(fld[3])))
+            rows.append((b, c, v, norm_text(fld[4])))
     rows.sort(key=lambda r: (r[0], r[1], r[2]))
     return rows
 
@@ -290,16 +307,18 @@ def etl_xrefs(raw, warn):
             cols = line.rstrip("\n").split("\t")
             if len(cols) < 3:
                 continue
-            fr = parse_ref(cols[0])
-            to = parse_ref(cols[1])
-            if not fr or not to:
+            from_list = parse_ref_range(cols[0])
+            to_list = parse_ref_range(cols[1])
+            if not from_list or not to_list:
                 warn(f"xrefs: rejected reference {cols[0]} -> {cols[1]}")
                 continue
             try:
                 rank = int(cols[2])
             except ValueError:
                 rank = 1
-            rows.append([fr[0], fr[1], fr[2], to[0], to[1], to[2], rank, rank, "openbible-xrefs"])
+            for fr in from_list:
+                for to in to_list:
+                    rows.append([fr[0], fr[1], fr[2], to[0], to[1], to[2], rank, rank, "openbible-xrefs"])
     rows.sort(key=lambda r: (r[0], r[1], r[2], r[3], r[4], r[5]))
     return rows
 
@@ -355,7 +374,7 @@ def run(raw_dir, clean_dir):
         if os.path.exists(raw_path):
             raw_checksums[name] = sha256(raw_path)
 
-    ingest("KJV.csv", etl_verses(raw_dir, warn), "verses.tsv")
+    ingest("t_kjv.csv", etl_verses(raw_dir, warn), "verses.tsv")
     ingest("strongs-greek.js", etl_lexicon(raw_dir, warn), "lexicon.tsv")
     ingest("kjv_strongs", etl_verse_words(raw_dir, warn), "verse_words.tsv")
     ingest("cross_references.txt", etl_xrefs(raw_dir, warn), "xrefs.tsv")
@@ -394,9 +413,9 @@ def run(raw_dir, clean_dir):
 # ── Self-test: deterministic on a tiny bundled fixture ────────────────────────
 
 _FIXTURES = {
-    "KJV.csv": "book,chapter,verse,text\nJohn,3,16,For God so loved the world.\nRom,8,28,And we know.\n",
+    "t_kjv.csv": "id,b,c,v,t\n1003001,43,3,16,For God so loved the world.\n1003028,45,8,28,And we know.\n",
     "strongs-greek.js": "{\"G26\": {\"lemma\": \"agape\", \"translit\": \"agape\", \"pron\": \"ag-ah'-pay\", \"part_of_speech\": \"n f\", \"strongs_def\": \"love\", \"kjv_def\": \"love\", \"derivation\": \"from G25\"}}\n",
-    "cross_references.txt": "From Verse\tTo Verse\tVotes\nJohn.3.16\tRom.8.28\t50\n",
+    "cross_references.txt": "From Verse\tTo Verse\tVotes\t#www.openbible.info\nJohn.3.16\tRom.8.28\t50\n",
     "naves-topical.tsv": "Love\tJohn\t3\t16\nLove\tRom\t8\t28\n",
 }
 
