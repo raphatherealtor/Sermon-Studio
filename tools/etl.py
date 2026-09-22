@@ -1,25 +1,42 @@
 #!/usr/bin/env python3
-"""
-Sermon Studio — raw data ETL.
+"""Sermon Studio — deterministic canon.db ETL.
 
-Normalizes heterogeneous public-domain source files into clean, canonical TSVs
-that the Rust `canon.db` builder ingests. This keeps the Rust side simple and
-deterministic while absorbing the messiness of real-world datasets:
+Normalizes local/raw public-domain source files into the deterministic TSVs the
+Rust `canon.db` builder ingests. Runtime never downloads: acquisition is a
+separate, offline, human-run step; this script runs only at build time.
 
-  * KJV.csv                -> clean/verses.tsv
-  * kjv_strongs/*.json     -> clean/verse_words.tsv   (tolerant of invalid JSON)
-  * strongs-{greek,hebrew}.js -> clean/lexicon.tsv
-  * cross_references.txt   -> clean/xrefs.tsv
+Outputs (data/clean/):
+  verses.tsv        book_num, chapter, verse, text
+  lexicon.tsv       strong_id, testament, lemma, transliteration, pronunciation,
+                    part_of_speech, definition, gloss, derivation, usage_note,
+                    source_id, source_version
+  verse_words.tsv   book_num, chapter, verse, word_order, surface, strong_id,
+                    morphology, strongs_extended, lemma, gloss, source_id
+  xrefs.tsv         from_b, from_c, from_v, to_b, to_c, to_v, rank, weight, source_id
+  topics.tsv        topic_id, name, source_id, source_version
+  topic_verses.tsv  topic_id, book_num, chapter, verse, weight, source_id
+  etl-manifest.json machine-readable ETL version, raw/output checksums, row counts,
+                    warnings/errors
+
+Determinism contract: identical raw inputs + this ETL version => byte-identical
+normalized output (stable ordering, stable ids, NFC Unicode, single-space
+whitespace, LF newlines). Invalid verse references are REJECTED, never clamped.
 
 Run:  python3 tools/etl.py --raw data/raw --out data/clean
+Self-test: python3 tools/etl.py --self-test
 """
 import argparse
+import csv
+import hashlib
 import json
 import os
 import re
 import sys
+import unicodedata
 
-# Canonical 66 books: (book_num, osis, display_name, testament)
+ETL_VERSION = "2025.01-track-m"
+
+# ── Canonical 66 books + the ONE abbreviation-mapping table ──────────────────
 BOOKS = [
     (1, "Gen", "Genesis", "OT"), (2, "Exod", "Exodus", "OT"), (3, "Lev", "Leviticus", "OT"),
     (4, "Num", "Numbers", "OT"), (5, "Deut", "Deuteronomy", "OT"), (6, "Josh", "Joshua", "OT"),
@@ -46,7 +63,7 @@ BOOKS = [
     (66, "Rev", "Revelation", "NT"),
 ]
 
-# Extra aliases seen in the wild (lowercased, alnum-only key -> book_num).
+# Aliases seen in the wild (lowercased, alnum-only key -> book_num).
 ALIASES = {
     "i chronicles": 13, "ii chronicles": 14, "i corinthians": 46, "ii corinthians": 47,
     "i john": 62, "ii john": 63, "iii john": 64, "i kings": 11, "ii kings": 12,
@@ -71,7 +88,6 @@ ALIASES = {
     "1p": 60, "2p": 61, "1j": 62, "2j": 63, "3j": 64, "re": 66,
 }
 
-# Build lookup: normalized name -> book_num
 NAME_TO_NUM = {}
 for num, osis, name, _t in BOOKS:
     for key in (osis, name):
@@ -81,8 +97,19 @@ for k, v in ALIASES.items():
 
 
 def norm_book(name):
-    key = re.sub(r"[^a-z0-9]", "", name.lower())
-    return NAME_TO_NUM.get(key)
+    return NAME_TO_NUM.get(re.sub(r"[^a-z0-9]", "", name.lower()))
+
+
+def norm_text(s):
+    return " ".join(unicodedata.normalize("NFC", s or "").split())
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def parse_csv_line(line):
@@ -104,13 +131,31 @@ def parse_csv_line(line):
     return fields
 
 
-def etl_verses(raw, out):
+STRONG_TAG = re.compile(r"\[([HG]\d+)\]")
+VERSE_KEY = re.compile(r'"([^"]+\|[^"]+\|[^"]+)"\s*:\s*\{\s*"en"\s*:\s*"((?:[^"\\]|\\.)*)"')
+REF_RE = re.compile(r"^([1-3]?[A-Za-z]+)\.(\d+)\.(\d+)$")
+
+
+def parse_ref(s):
+    m = REF_RE.match(s.strip())
+    if not m:
+        return None
+    b = norm_book(m.group(1))
+    if b is None:
+        return None
+    return (b, int(m.group(2)), int(m.group(3)))
+
+
+# ── Normalizers (each returns a sorted list of rows) ─────────────────────────
+
+def etl_verses(raw, warn):
     src = os.path.join(raw, "KJV.csv")
-    dst = os.path.join(out, "verses.tsv")
-    n = 0
-    with open(src, encoding="utf-8") as f, open(dst, "w", encoding="utf-8") as w:
+    if not os.path.exists(src):
+        return []
+    rows = []
+    with open(src, encoding="utf-8") as f:
         next(f, None)
-        for line in f:
+        for i, line in enumerate(f):
             if not line.strip():
                 continue
             fld = parse_csv_line(line)
@@ -118,26 +163,63 @@ def etl_verses(raw, out):
                 continue
             b = norm_book(fld[0])
             if b is None:
+                warn(f"verses: unknown book {fld[0]!r}")
                 continue
             try:
                 ch, vs = int(fld[1]), int(fld[2])
             except ValueError:
+                warn(f"verses: bad reference {fld[1]}:{fld[2]}")
                 continue
-            text = fld[3].strip().replace("\t", " ")
-            w.write(f"{b}\t{ch}\t{vs}\t{text}\n")
-            n += 1
-    print(f"verses.tsv: {n} rows")
+            if ch < 1 or vs < 1:
+                warn(f"verses: rejected chapter/verse {ch}:{vs}")
+                continue
+            rows.append((b, ch, vs, norm_text(fld[3])))
+    rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    return rows
 
 
-STRONG_TAG = re.compile(r"\[([HG]\d+)\]")
-VERSE_KEY = re.compile(r'"([^"]+\|[^"]+\|[^"]+)"\s*:\s*\{\s*"en"\s*:\s*"((?:[^"\\]|\\.)*)"')
+def etl_lexicon(raw, warn):
+    rows = []
+    for fn, testament, source_id, version in (
+        ("strongs-hebrew.js", "OT", "strongs-pd", "1890"),
+        ("strongs-greek.js", "NT", "strongs-pd", "1890"),
+        ("stepbible-tbesh.tsv", "OT", "stepbible-tbesh", "tbesh"),
+        ("stepbible-tbesg.tsv", "NT", "stepbible-tbesg", "tbesg"),
+    ):
+        path = os.path.join(raw, fn)
+        if not os.path.exists(path):
+            continue
+        if fn.endswith(".js"):
+            text = open(path, encoding="utf-8").read()
+            data = json.loads(text[text.find("{"):text.rfind("}") + 1])
+            for sid, v in data.items():
+                rows.append([
+                    sid, testament, v.get("lemma", ""), v.get("translit") or v.get("xlit") or "",
+                    v.get("pron", "") or None, v.get("part_of_speech", "") or None,
+                    v.get("strongs_def", ""), v.get("kjv_def", ""), v.get("derivation", "") or None,
+                    None, source_id, version,
+                ])
+        else:
+            for line in open(path, encoding="utf-8"):
+                f = [c.strip() for c in line.split("\t")]
+                if len(f) < 8:
+                    continue
+                strong_id = f[0]
+                if not (strong_id[:1] in "GH" and strong_id[1:].isdigit()):
+                    warn(f"lexicon: malformed strong_id {strong_id!r}")
+                    continue
+                rows.append([
+                    strong_id, testament, f[1], f[2], f[3] or None, f[4] or None,
+                    f[5], f[6], f[7] or None, None, source_id, version,
+                ])
+    rows.sort(key=lambda r: r[0])
+    return rows
 
 
-def etl_verse_words(raw, out):
+def etl_verse_words(raw, warn):
     src_dir = os.path.join(raw, "kjv_strongs")
-    dst = os.path.join(out, "verse_words.tsv")
-    n = 0
-    with open(dst, "w", encoding="utf-8") as w:
+    rows = []
+    if os.path.isdir(src_dir):
         for fn in sorted(os.listdir(src_dir)):
             if not fn.endswith(".json") or fn in ("books.json", "lexicon.json", "chapter_count.json"):
                 continue
@@ -153,10 +235,6 @@ def etl_verse_words(raw, out):
                     ch, vs = int(parts[1]), int(parts[2])
                 except ValueError:
                     continue
-                try:
-                    en = json.loads('"' + en + '"')
-                except Exception:
-                    en = en.replace('\\"', '"')
                 en = en.replace("<em>", "").replace("</em>", "")
                 order = 0
                 for raw_word in en.split():
@@ -164,47 +242,48 @@ def etl_verse_words(raw, out):
                     surface = STRONG_TAG.sub("", raw_word).strip().strip(",.;:!?")
                     if not tags:
                         if surface:
-                            w.write(f"{b}\t{ch}\t{vs}\t{order}\t{surface}\t\t\n")
+                            rows.append([b, ch, vs, order, surface, None, None, None, None, None, "stepbible-tagnt"])
                             order += 1
                     else:
                         for t in tags:
-                            w.write(f"{b}\t{ch}\t{vs}\t{order}\t{surface}\t{t}\t\n")
+                            rows.append([b, ch, vs, order, surface, t, None, t, None, None, "stepbible-tagnt"])
                             order += 1
-                n += 1
-    print(f"verse_words.tsv: {n} verses tokenized")
-
-
-def etl_lexicon(raw, out):
-    dst = os.path.join(out, "lexicon.tsv")
-    n = 0
-    with open(dst, "w", encoding="utf-8") as w:
-        for fn, testament in (("strongs-hebrew.js", "OT"), ("strongs-greek.js", "NT")):
-            path = os.path.join(raw, fn)
-            if not os.path.exists(path):
+    # Optional: STEPBible morphological TSV (book, chapter, verse, surface, strongs,
+    # morphology, extended, lemma, gloss).
+    for src_name, source_id in (("stepbible-tagnt.tsv", "stepbible-tagnt"), ("stepbible-tahot.tsv", "stepbible-tahot")):
+        path = os.path.join(raw, src_name)
+        if not os.path.exists(path):
+            continue
+        for line in open(path, encoding="utf-8"):
+            f = [c.strip() for c in line.split("\t")]
+            if len(f) < 9:
                 continue
-            text = open(path, encoding="utf-8").read()
-            start, end = text.find("{"), text.rfind("}")
-            data = json.loads(text[start:end + 1])
-            for sid, v in data.items():
-                lemma = v.get("lemma", "")
-                translit = v.get("translit") or v.get("xlit") or ""
-                pron = v.get("pron", "")
-                pos = v.get("part_of_speech", "")
-                definition = v.get("strongs_def", "")
-                gloss = v.get("kjv_def", "")
-                deriv = v.get("derivation", "")
-                row = [sid, testament, lemma, translit, pron, pos, definition, gloss, deriv]
-                row = [str(x).replace("\t", " ").replace("\n", " ") for x in row]
-                w.write("\t".join(row) + "\n")
-                n += 1
-    print(f"lexicon.tsv: {n} entries")
+            b = norm_book(f[0])
+            try:
+                ch, vs = int(f[1]), int(f[2])
+            except ValueError:
+                warn(f"verse_words: bad reference {f[1]}:{f[2]}")
+                continue
+            if b is None or ch < 1 or vs < 1:
+                warn(f"verse_words: rejected row")
+                continue
+            rows.append([b, ch, vs, 0, f[3], f[4] or None, f[5] or None, f[6] or None, f[7] or None, f[8] or None, source_id])
+    # Stabilize word order per verse.
+    seen = {}
+    for row in rows:
+        key = (row[0], row[1], row[2])
+        row[3] = seen.get(key, 0)
+        seen[key] = row[3] + 1
+    rows.sort(key=lambda r: (r[0], r[1], r[2], r[3]))
+    return rows
 
 
-def etl_xrefs(raw, out):
+def etl_xrefs(raw, warn):
     src = os.path.join(raw, "cross_references.txt")
-    dst = os.path.join(out, "xrefs.tsv")
-    n = 0
-    with open(src, encoding="utf-8") as f, open(dst, "w", encoding="utf-8") as w:
+    if not os.path.exists(src):
+        return []
+    rows = []
+    with open(src, encoding="utf-8") as f:
         for line in f:
             if line.startswith("From Verse") or not line.strip():
                 continue
@@ -214,39 +293,151 @@ def etl_xrefs(raw, out):
             fr = parse_ref(cols[0])
             to = parse_ref(cols[1])
             if not fr or not to:
+                warn(f"xrefs: rejected reference {cols[0]} -> {cols[1]}")
                 continue
             try:
                 rank = int(cols[2])
             except ValueError:
                 rank = 1
-            w.write(f"{fr[0]}\t{fr[1]}\t{fr[2]}\t{to[0]}\t{to[1]}\t{to[2]}\t{rank}\n")
-            n += 1
-    print(f"xrefs.tsv: {n} rows")
+            rows.append([fr[0], fr[1], fr[2], to[0], to[1], to[2], rank, rank, "openbible-xrefs"])
+    rows.sort(key=lambda r: (r[0], r[1], r[2], r[3], r[4], r[5]))
+    return rows
 
 
-REF_RE = re.compile(r"^([1-3]?[A-Za-z]+)\.(\d+)\.(\d+)$")
+def etl_topics(raw, warn, source_id, version):
+    path = os.path.join(raw, f"{source_id}.tsv")
+    if not os.path.exists(path):
+        return [], []
+    topics = {}
+    refs = []
+    for line in open(path, encoding="utf-8"):
+        f = [c.strip() for c in line.split("\t")]
+        if len(f) < 4:
+            continue
+        name = norm_text(f[0])
+        b = norm_book(f[1])
+        try:
+            ch, vs = int(f[2]), int(f[3])
+        except ValueError:
+            warn(f"topics: bad reference {f[2]}:{f[3]}")
+            continue
+        if not name or b is None or ch < 1 or vs < 1:
+            warn(f"topics: rejected row {f[:4]!r}")
+            continue
+        topic_id = f"{source_id}::{re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')}"
+        topics[topic_id] = name
+        refs.append((topic_id, b, ch, vs))
+    topic_rows = sorted((tid, topics[tid], source_id, version) for tid in topics)
+    topic_verse_rows = sorted(set(refs))
+    return topic_rows, [(tid, b, c, v, 1.0, source_id) for (tid, b, c, v) in topic_verse_rows]
 
 
-def parse_ref(s):
-    m = REF_RE.match(s.strip())
-    if not m:
-        return None
-    b = norm_book(m.group(1))
-    if b is None:
-        return None
-    return (b, int(m.group(2)), int(m.group(3)))
+# ── Driver + manifest ─────────────────────────────────────────────────────────
+
+def write_tsv(path, rows):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        for row in rows:
+            f.write("\t".join("" if c is None else str(c) for c in row) + "\n")
+
+
+def run(raw_dir, clean_dir):
+    os.makedirs(clean_dir, exist_ok=True)
+    warnings = []
+    warn = warnings.append
+
+    outputs = {}
+    raw_checksums = {}
+
+    def ingest(name, rows, out_name):
+        if rows:
+            outputs[out_name] = rows
+        raw_path = os.path.join(raw_dir, name)
+        if os.path.exists(raw_path):
+            raw_checksums[name] = sha256(raw_path)
+
+    ingest("KJV.csv", etl_verses(raw_dir, warn), "verses.tsv")
+    ingest("strongs-greek.js", etl_lexicon(raw_dir, warn), "lexicon.tsv")
+    ingest("kjv_strongs", etl_verse_words(raw_dir, warn), "verse_words.tsv")
+    ingest("cross_references.txt", etl_xrefs(raw_dir, warn), "xrefs.tsv")
+
+    naves_t, naves_tv = etl_topics(raw_dir, warn, "naves-topical", "1896")
+    torrey_t, torrey_tv = etl_topics(raw_dir, warn, "torrey-topical", "1897")
+    topics = sorted(naves_t + torrey_t)
+    topic_verses = sorted(naves_tv + torrey_tv)
+    if topics:
+        outputs["topics.tsv"] = topics
+    if topic_verses:
+        outputs["topic_verses.tsv"] = topic_verses
+
+    row_counts = {}
+    output_checksums = {}
+    for out_name, rows in outputs.items():
+        path = os.path.join(clean_dir, out_name)
+        write_tsv(path, rows)
+        row_counts[out_name] = len(rows)
+        output_checksums[out_name] = sha256(path)
+
+    manifest = {
+        "etl_version": ETL_VERSION,
+        "raw_checksums": dict(sorted(raw_checksums.items())),
+        "output_checksums": dict(sorted(output_checksums.items())),
+        "row_counts": dict(sorted(row_counts.items())),
+        "warnings": list(warnings),
+        "errors": [],
+    }
+    with open(os.path.join(clean_dir, "etl-manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return manifest
+
+
+# ── Self-test: deterministic on a tiny bundled fixture ────────────────────────
+
+_FIXTURES = {
+    "KJV.csv": "book,chapter,verse,text\nJohn,3,16,For God so loved the world.\nRom,8,28,And we know.\n",
+    "strongs-greek.js": "{\"G26\": {\"lemma\": \"agape\", \"translit\": \"agape\", \"pron\": \"ag-ah'-pay\", \"part_of_speech\": \"n f\", \"strongs_def\": \"love\", \"kjv_def\": \"love\", \"derivation\": \"from G25\"}}\n",
+    "cross_references.txt": "From Verse\tTo Verse\tVotes\nJohn.3.16\tRom.8.28\t50\n",
+    "naves-topical.tsv": "Love\tJohn\t3\t16\nLove\tRom\t8\t28\n",
+}
+
+
+def self_test(tmp_dir):
+    raw = os.path.join(tmp_dir, "raw")
+    os.makedirs(raw, exist_ok=True)
+    for name, content in _FIXTURES.items():
+        with open(os.path.join(raw, name), "w", encoding="utf-8") as f:
+            f.write(content)
+
+    m1 = run(raw, os.path.join(tmp_dir, "clean-a"))
+    m2 = run(raw, os.path.join(tmp_dir, "clean-b"))
+    assert m1 == m2, "ETL must be deterministic"
+    assert m1["row_counts"].get("verses.tsv") == 2
+    assert m1["row_counts"].get("lexicon.tsv") == 1
+    assert m1["row_counts"].get("xrefs.tsv") == 1
+    assert m1["row_counts"].get("topics.tsv") == 1
+    assert m1["row_counts"].get("topic_verses.tsv") == 2
+    with open(os.path.join(tmp_dir, "clean-a", "verses.tsv"), encoding="utf-8") as f:
+        assert "43\t3\t16\tFor God so loved the world." in f.read()
+    print("self-test passed:", json.dumps(m1, indent=2))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default="data/raw")
     ap.add_argument("--out", default="data/clean")
+    ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
-    os.makedirs(args.out, exist_ok=True)
-    etl_verses(args.raw, args.out)
-    etl_verse_words(args.raw, args.out)
-    etl_lexicon(args.raw, args.out)
-    etl_xrefs(args.raw, args.out)
+
+    if args.self_test:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self_test(tmp)
+        return
+
+    manifest = run(args.raw, args.out)
+    print(json.dumps(manifest, indent=2, sort_keys=True))
+    if manifest["errors"]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

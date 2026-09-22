@@ -22,6 +22,7 @@
 
 pub mod adapters;
 pub mod schema_ext;
+pub mod validate;
 
 use crate::books::BOOKS;
 use crate::error::Result;
@@ -203,9 +204,18 @@ pub fn build_canon_db(clean_dir: &Path, out_path: &Path) -> Result<CanonStats> {
          ANALYZE;",
     )?;
 
-    // 7. V1: register sources and write the version manifest.
+    // 7. V1: register sources, run dataset adapters (topics + enrichment), and
+    // write the version manifest.
     let registry = adapters::default_registry();
     adapters::register_sources(&conn, &registry)?;
+    {
+        let mut ctx = adapters::IngestContext {
+            clean_dir,
+            conn: &conn,
+            verse_ids: &verse_ids,
+        };
+        adapters::ingest_all(&mut ctx, &registry)?;
+    }
     let manifest = build_manifest(clean_dir, &registry);
     manifest.write(&conn)?;
 
@@ -401,5 +411,118 @@ mod tests {
         assert_eq!(reproducible_timestamp_from(None), "1970-01-01T00:00:00Z");
         assert_eq!(reproducible_timestamp_from(Some("not-a-number")), "1970-01-01T00:00:00Z");
         assert_eq!(reproducible_timestamp_from(Some("")), "1970-01-01T00:00:00Z");
+    }
+
+    /// End-to-end: build a full canon.db (verses + lexicon + verse_words + xrefs
+    /// + topics, with provenance columns), then validate and exercise the
+    /// read-only study lookups the packaged app depends on.
+    #[test]
+    fn builds_and_serves_a_full_study_vault() {
+        let tmp = tempfile::tempdir().unwrap();
+        let clean = tmp.path();
+        std::fs::write(
+            clean.join("verses.tsv"),
+            "43\t3\t16\tFor God so loved the world.\n45\t8\t28\tAnd we know that all things work together for good.\n45\t8\t29\tFor whom he did foreknow.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            clean.join("lexicon.tsv"),
+            "G26\tNT\tagape\tagape\tag-ah'-pay\tn f\tlove\tlove\tfrom G25\t\tstrongs-pd\t1890\n",
+        )
+        .unwrap();
+        std::fs::write(
+            clean.join("verse_words.tsv"),
+            "45\t8\t28\t0\tlove\tG26\tN-NSF\tG26\tagape\tlove\tstepbible-tagnt\n",
+        )
+        .unwrap();
+        std::fs::write(
+            clean.join("xrefs.tsv"),
+            "43\t3\t16\t45\t8\t28\t50\t0.5\topenbible-xrefs\n",
+        )
+        .unwrap();
+        std::fs::write(
+            clean.join("topics.tsv"),
+            "naves-topical::love\tLove\tnaves-topical\t1896\n",
+        )
+        .unwrap();
+        std::fs::write(
+            clean.join("topic_verses.tsv"),
+            "naves-topical::love\t45\t8\t28\t1.0\tnaves-topical\n",
+        )
+        .unwrap();
+
+        let db = tmp.path().join("canon.db");
+        let stats = build_canon_db(clean, &db).unwrap();
+        assert_eq!(stats.books, 66);
+        assert_eq!(stats.verses, 3);
+        assert_eq!(stats.lexicon, 1);
+        assert_eq!(stats.verse_words, 1);
+        assert_eq!(stats.cross_references, 1);
+
+        // Quality gates: no errors (all FK targets and provenance resolve).
+        let conn = crate::open_canon_readonly(&db).unwrap();
+        let report = validate::validate_canon(&conn).unwrap();
+        assert!(report.is_ok(), "validation errors: {:?}", report.errors);
+        assert_eq!(report.topic_count, 1);
+        assert_eq!(report.topic_verse_count, 1);
+
+        // 1. Passage lookup.
+        let text: String = conn
+            .query_row(
+                "SELECT text_kjv FROM bible_verses WHERE book_num=43 AND chapter=3 AND verse=16",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(text, "For God so loved the world.");
+
+        // 2. Strong's lookup (lemma + gloss + provenance).
+        let (lemma, gloss, source_id): (String, String, String) = conn
+            .query_row(
+                "SELECT lemma, gloss, source_id FROM strongs_lexicon WHERE strong_id='G26'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(lemma, "agape");
+        assert_eq!(gloss, "love");
+        assert_eq!(source_id, "strongs-pd");
+
+        // 3. Cross-reference lookup (weight + provenance).
+        let xref: (f64, String) = conn
+            .query_row(
+                "SELECT weight, source_id FROM cross_references",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(xref, (0.5, "openbible-xrefs".to_string()));
+
+        // 4. Topic membership.
+        let topic_name: String = conn
+            .query_row(
+                "SELECT name FROM topics WHERE id='naves-topical::love'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(topic_name, "Love");
+
+        // 5. Morphology enrichment landed on verse_words.
+        let (morph, lemma, src): (String, String, String) = conn
+            .query_row(
+                "SELECT morphology_code, lemma, source_id FROM verse_words",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(morph, "N-NSF");
+        assert_eq!(lemma, "agape");
+        assert_eq!(src, "stepbible-tagnt");
+
+        // 6. Attribution registry is readable.
+        let sources = adapters::read_sources(&conn).unwrap();
+        assert_eq!(sources.len(), 9);
+        assert!(sources.iter().any(|s| s.id == "naves-topical" && s.license_code == "PD"));
     }
 }

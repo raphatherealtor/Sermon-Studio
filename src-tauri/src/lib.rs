@@ -44,10 +44,13 @@ impl AppState {
         Ok(sermon_core::indexer::open_pastor_db(&path)?)
     }
 
-    /// Open the static canon vault read-only.
+    /// Open the static canon vault read-only (configured path or packaged resource).
     pub fn canon(&self) -> anyhow::Result<Connection> {
         let cfg = self.config.lock().unwrap().clone();
-        let path = PathBuf::from(&cfg.canon_path);
+        let path = cfg.resolve_canon_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         Ok(sermon_core::open_canon_readonly(&path)?)
     }
 }
@@ -147,6 +150,7 @@ pub fn run() {
             commands::sermons_for_verse,
             commands::librarian_catalog,
             commands::librarian_related,
+            commands::list_canon_sources,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Sermon Studio");

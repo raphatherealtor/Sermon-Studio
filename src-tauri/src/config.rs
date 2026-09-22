@@ -75,4 +75,30 @@ impl AppConfig {
         let s = serde_json::to_string_pretty(self).unwrap_or_default();
         std::fs::write(config_path, s)
     }
+
+    /// Resolve the effective canon.db location.
+    ///
+    /// Looks first at the configured data-dir path, then at platform-neutral
+    /// packaged fallbacks (next to the executable, and in the Tauri resource
+    /// dir). Returns the first candidate that exists, else the configured path
+    /// so that `canon_present` correctly reports absence on a clean run.
+    pub fn resolve_canon_path(&self) -> PathBuf {
+        let configured = PathBuf::from(&self.canon_path);
+        if configured.exists() {
+            return configured;
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                for candidate in [
+                    dir.join("canon.db"),
+                    dir.join("resources").join("canon.db"),
+                ] {
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        configured
+    }
 }
