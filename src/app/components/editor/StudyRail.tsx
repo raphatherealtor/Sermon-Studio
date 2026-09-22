@@ -2,12 +2,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
-import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2,  } from 'lucide-react';
+import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb,  } from 'lucide-react';
 import type {
   PassageResult, StrongsEntry, CrossReference, PreachedResult, IllustrationFatigueResult,
 } from '@/lib/backend/types';
+import InsightsPanel from './InsightsPanel';
 
-type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue';
+type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights';
 
 const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title: string }[] = [
   { id: 'passage', label: 'Passage', icon: Book, title: 'Scripture Passage' },
@@ -15,6 +16,7 @@ const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title:
   { id: 'xref', label: 'X-Ref', icon: Link2, title: 'Cross References' },
   { id: 'history', label: 'History', icon: Clock, title: 'Preached On' },
   { id: 'fatigue', label: 'Fatigue', icon: BarChart2, title: 'Illustration Fatigue' },
+  { id: 'insights', label: 'Insights', icon: Lightbulb, title: 'Sermon Intelligence' },
 ];
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -197,7 +199,7 @@ export default function StudyRail() {
       </div>
 
       {/* Reference input (shared for passage/xref/history) */}
-      {activeTab !== 'fatigue' && activeTab !== 'strongs' && (
+      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && (
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
           <div className="flex gap-1.5">
             <input
@@ -567,6 +569,9 @@ export default function StudyRail() {
             )}
           </div>
         )}
+
+        {/* ── Sermon Intelligence tab (Track L presentation) ── */}
+        {activeTab === 'insights' && <InsightsPanel />}
       </div>
     </div>
   );

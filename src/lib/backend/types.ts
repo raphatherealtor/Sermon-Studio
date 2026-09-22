@@ -467,7 +467,7 @@ export interface IntelligenceInsight { id: string; kind: IntelligenceKind; title
 export interface IntelligenceInputs { provenanceClasses: ProvenanceClass[]; archiveFingerprint?: string; }
 /** Audit: the exact weights a scoring run applied. Mirrors the Rust `IntelligenceWeights`. */
 export interface IntelligenceWeights { primaryPassageOverlap: number; referenceOverlap: number; bigIdeaOverlap: number; titleOverlap: number; seriesOverlap: number; illustrationPattern: number; structureOverlap: number; }
-export interface IntelligenceResult { engineVersion: string; generatedAt: string; subjectSermonId?: string; subjectReference?: string; inputs?: IntelligenceInputs; weights?: IntelligenceWeights; insights: IntelligenceInsight[]; }
+export interface IntelligenceResult { engineVersion: string; generatedAt: string; subjectSermonId?: string; subjectReference?: string; inputs?: IntelligenceInputs; weights?: IntelligenceWeights; biblicalDataAvailable?: boolean; insights: IntelligenceInsight[]; }
 
 // ── V1 contract re-exports ───────────────────────────────────────────────────
 // The V1 scaffold adds frozen contracts as isolated modules so they can be
