@@ -347,9 +347,9 @@ adapter!(
     StrongsAdapter,
     "strongs-pd",
     "Strong's Exhaustive Concordance",
-    "PD",
-    "Strong's Exhaustive Concordance (1890), public domain.",
-    "https://www.openscriptures.org/",
+    "CC-BY-SA",
+    "Strong's Exhaustive Concordance (1890 Greek / 1894 Hebrew) — public domain. Digital transcription: Open Scriptures strongs-greek/hebrew-dictionary.js (CC BY-SA).",
+    "https://github.com/openscriptures/strongs",
     |ctx| enrich_lexicon(ctx, "strongs-pd")
 );
 

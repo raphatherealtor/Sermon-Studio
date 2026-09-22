@@ -227,7 +227,13 @@ def etl_verses(raw, warn):
             if not (1 <= b <= 66 and c >= 1 and v >= 1):
                 warn(f"verses: rejected {b}:{c}:{v}")
                 continue
-            rows.append((b, c, v, norm_text(fld[4])))
+            text = norm_text(fld[4])
+            # Empty/placeholder verse slots (e.g. the source's non-canonical
+            # 3 John 1:15 emitted as "[]") are versification artifacts, not verses.
+            if text in ("", "[]", "()"):
+                warn(f"verses: dropped empty verse {b}:{c}:{v}")
+                continue
+            rows.append((b, c, v, text))
     rows.sort(key=lambda r: (r[0], r[1], r[2]))
     return rows
 
@@ -572,7 +578,7 @@ def run(raw_dir, clean_dir):
 # ── Self-test: deterministic on a tiny bundled fixture ────────────────────────
 
 _FIXTURES = {
-    "t_kjv.csv": "id,b,c,v,t\n1003001,43,3,16,For God so loved the world.\n1003028,45,8,28,And we know.\n",
+    "t_kjv.csv": "id,b,c,v,t\n1003001,43,3,16,For God so loved the world.\n1003028,45,8,28,And we know.\n1003064,64,1,15,[]\n",
     "strongs-greek.js": '{"G26": {"lemma": "agape", "translit": "agape", "strongs_def": "love", "kjv_def": "love", "derivation": "from G25"}}\n',
     "strongs-hebrew.js": '{"H430": {"lemma": "elohim", "xlit": "elohim", "pron": "el-o-heem", "strongs_def": "God", "kjv_def": "God", "derivation": "plural of H433"}}\n',
     "stepbible-tbesh.tsv": "TBESH header\nH9001\tH9001 =\tH9001\tav\tav\tH:N-M\tfather\tfather <b>definition</b>\n",
