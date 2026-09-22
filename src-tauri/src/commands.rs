@@ -74,6 +74,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "sermons_for_verse",
     "librarian_catalog",
     "librarian_related",
+    "list_canon_sources",
 ];
 
 // ---------------------------------------------------------------------------
@@ -617,7 +618,7 @@ pub struct ConfigView {
 pub fn get_config(state: State<AppState>) -> ConfigView {
     let cfg = state.config.lock().unwrap().clone();
     ConfigView {
-        canon_present: PathBuf::from(&cfg.canon_path).exists(),
+        canon_present: cfg.resolve_canon_path().exists(),
         vault_path: cfg.vault_path,
         canon_path: cfg.canon_path,
         pastor_path: cfg.pastor_path,
@@ -625,6 +626,24 @@ pub fn get_config(state: State<AppState>) -> ConfigView {
         font_size: cfg.font_size,
         high_contrast: cfg.high_contrast,
     }
+}
+
+/// Attribution surface: enumerate the datasets that contributed to canon.db.
+#[tauri::command]
+pub fn list_canon_sources(state: State<AppState>) -> ApiResult<Vec<dto::CanonSourceDto>> {
+    let conn = state.canon().map_err(|e| e.to_string())?;
+    let sources = sermon_core::canon::adapters::read_sources(&conn).map_err(|e| e.to_string())?;
+    Ok(sources
+        .into_iter()
+        .map(|s| dto::CanonSourceDto {
+            id: s.id,
+            name: s.name,
+            license_code: s.license_code,
+            attribution: s.attribution,
+            url: s.url,
+            version: s.version,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -830,7 +849,7 @@ mod tests {
             .expect("read build.rs");
         assert_eq!(
             COMMAND_NAMES.len(),
-            51,
+            52,
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {

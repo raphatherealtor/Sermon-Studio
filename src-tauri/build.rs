@@ -55,6 +55,7 @@ const APP_COMMANDS: &[&str] = &[
     "sermons_for_verse",
     "librarian_catalog",
     "librarian_related",
+    "list_canon_sources",
 ];
 
 fn main() {

@@ -50,6 +50,11 @@ Cargo.lock.orig
 /data/raw/
 /data/clean/
 /data/*.db
+/data/resources/
+
+# Python bytecode
+__pycache__/
+*.pyc
 /generated_images/
 *.log
 

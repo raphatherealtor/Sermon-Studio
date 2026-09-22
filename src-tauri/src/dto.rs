@@ -783,6 +783,22 @@ pub struct CodecRoundTripResultDto {
     pub serialized: String,
 }
 
+// ---------------------------------------------------------------------------
+// Canon attribution surface
+// ---------------------------------------------------------------------------
+
+/// A registered canon.db data source, surfaced for the in-app attribution view.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonSourceDto {
+    pub id: String,
+    pub name: String,
+    pub license_code: String,
+    pub attribution: String,
+    pub url: Option<String>,
+    pub version: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

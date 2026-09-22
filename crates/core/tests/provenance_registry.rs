@@ -78,7 +78,7 @@ fn source_provenance_serializes_stably() {
 fn license_codes_are_from_the_expected_set() {
     for s in load_fixture() {
         assert!(
-            matches!(s.license_code.as_str(), "PD" | "CC-BY-4.0"),
+            matches!(s.license_code.as_str(), "PD" | "CC-BY-4.0" | "CC-BY-SA"),
             "unexpected license code {} for {}",
             s.license_code,
             s.source_id
