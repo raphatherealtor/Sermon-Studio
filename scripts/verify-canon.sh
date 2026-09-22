@@ -29,6 +29,8 @@ if [[ "$BUILD" == "--build" ]]; then
   echo "==> Copying into the desktop resource dir for packaging"
   mkdir -p "$ROOT/data/resources"
   cp "$ROOT/data/canon.db" "$ROOT/data/resources/canon.db"
+  echo "==> Running production data-quality gates + sample lookups"
+  python3 "$ROOT/tools/verify_canon_data.py" "$ROOT/data/canon.db"
 fi
 
 echo "==> OK"

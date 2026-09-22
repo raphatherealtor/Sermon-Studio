@@ -34,7 +34,7 @@ import re
 import sys
 import unicodedata
 
-ETL_VERSION = "2025.01-track-m"
+ETL_VERSION = "2025.01-track-m-full"
 
 # ── Canonical 66 books + the ONE abbreviation-mapping table ──────────────────
 BOOKS = [
@@ -95,6 +95,26 @@ for num, osis, name, _t in BOOKS:
 for k, v in ALIASES.items():
     NAME_TO_NUM[re.sub(r"[^a-z0-9]", "", k.lower())] = v
 
+# STEPBible's own UBS abbreviation scheme (used by TAGNT/TAHOT). Kept separate
+# from NAME_TO_NUM because several collide with OpenBible/OSIS abbreviations
+# (e.g. STEPBible "Jud" = Jude, "Jdg" = Judges; "1Jn" = 1 John).
+STEP_BOOKS = {
+    "gen": 1, "exo": 2, "lev": 3, "num": 4, "deu": 5, "jos": 6, "jdg": 7, "rut": 8,
+    "1sa": 9, "2sa": 10, "1ki": 11, "2ki": 12, "1ch": 13, "2ch": 14, "ezr": 15,
+    "neh": 16, "est": 17, "job": 18, "psa": 19, "pro": 20, "ecc": 21, "sng": 22,
+    "isa": 23, "jer": 24, "lam": 25, "ezk": 26, "dan": 27, "hos": 28, "jol": 29,
+    "amo": 30, "oba": 31, "jon": 32, "mic": 33, "nam": 34, "hab": 35, "zep": 36,
+    "hag": 37, "zec": 38, "mal": 39,
+    "mat": 40, "mrk": 41, "luk": 42, "jhn": 43, "act": 44, "rom": 45, "1co": 46,
+    "2co": 47, "gal": 48, "eph": 49, "php": 50, "col": 51, "1th": 52, "2th": 53,
+    "1ti": 54, "2ti": 55, "tit": 56, "phm": 57, "heb": 58, "jas": 59, "1pe": 60,
+    "2pe": 61, "1jn": 62, "2jn": 63, "3jn": 64, "jud": 65, "rev": 66,
+}
+
+
+def _int(x, default=0):
+    return int(x) if x is not None else default
+
 
 def norm_book(name):
     return NAME_TO_NUM.get(re.sub(r"[^a-z0-9]", "", name.lower()))
@@ -102,6 +122,10 @@ def norm_book(name):
 
 def norm_text(s):
     return " ".join(unicodedata.normalize("NFC", s or "").split())
+
+
+def strip_html(s):
+    return re.sub(r"<[^>]*>", " ", s or "")
 
 
 def sha256(path):
@@ -166,6 +190,19 @@ def parse_ref_range(s):
     return [r] if r else None
 
 
+def classic_strongs(token):
+    """Backward-compatible Strong's number: strip zero-padding, instance suffix
+    (`_A`), and STEPBible disambiguation letters (`H7225G` -> `H7225`)."""
+    m = re.search(r"([HG])(\d+)", token or "")
+    if not m:
+        return None
+    return m.group(1) + str(int(m.group(2)))
+
+
+# STEPBible word/verse reference used by TAGNT and TAHOT: `Mat.1.1#01=NKO`.
+STEP_REF_RE = re.compile(r"^([0-9]?[A-Za-z]+)\.(\d+)\.(\d+)#(\d+)=(\S+)$")
+
+
 # ── Normalizers (each returns a sorted list of rows) ─────────────────────────
 
 def etl_verses(raw, warn):
@@ -196,103 +233,151 @@ def etl_verses(raw, warn):
 
 
 def etl_lexicon(raw, warn):
-    rows = []
+    # Strong's (OpenScriptures) first — the authoritative classic lexicon.
+    strongs = {}
+    for fn, testament in (("strongs-hebrew.js", "OT"), ("strongs-greek.js", "NT")):
+        path = os.path.join(raw, fn)
+        if not os.path.exists(path):
+            continue
+        text = open(path, encoding="utf-8").read()
+        data = json.loads(text[text.find("{"):text.rfind("}") + 1])
+        for sid, v in data.items():
+            strongs[sid] = [
+                sid, testament,
+                norm_text(v.get("lemma", "")),
+                norm_text(v.get("translit") or v.get("xlit") or ""),
+                norm_text(v.get("pron", "")) or None,
+                norm_text(v.get("part_of_speech", "")) or None,
+                norm_text(v.get("strongs_def", "")),
+                norm_text(v.get("kjv_def", "")),
+                norm_text(v.get("derivation", "")) or None,
+                None, "strongs-pd", "1890",
+            ]
+
+    # STEPBible brief lexicons: gap-fill extended ids beyond classic Strong's.
+    # (Strong's full definitions win for the classic id space; the disambiguated
+    # letter-suffixed ids are NOT stored because they would fail the malformed-id
+    # gate.)
+    emitted = set(strongs.keys())
+    rows = list(strongs.values())
     for fn, testament, source_id, version in (
-        ("strongs-hebrew.js", "OT", "strongs-pd", "1890"),
-        ("strongs-greek.js", "NT", "strongs-pd", "1890"),
         ("stepbible-tbesh.tsv", "OT", "stepbible-tbesh", "tbesh"),
         ("stepbible-tbesg.tsv", "NT", "stepbible-tbesg", "tbesg"),
     ):
         path = os.path.join(raw, fn)
         if not os.path.exists(path):
             continue
-        if fn.endswith(".js"):
-            text = open(path, encoding="utf-8").read()
-            data = json.loads(text[text.find("{"):text.rfind("}") + 1])
-            for sid, v in data.items():
-                rows.append([
-                    sid, testament, v.get("lemma", ""), v.get("translit") or v.get("xlit") or "",
-                    v.get("pron", "") or None, v.get("part_of_speech", "") or None,
-                    v.get("strongs_def", ""), v.get("kjv_def", ""), v.get("derivation", "") or None,
-                    None, source_id, version,
-                ])
-        else:
-            for line in open(path, encoding="utf-8"):
-                f = [c.strip() for c in line.split("\t")]
-                if len(f) < 8:
-                    continue
-                strong_id = f[0]
-                if not (strong_id[:1] in "GH" and strong_id[1:].isdigit()):
-                    warn(f"lexicon: malformed strong_id {strong_id!r}")
-                    continue
-                rows.append([
-                    strong_id, testament, f[1], f[2], f[3] or None, f[4] or None,
-                    f[5], f[6], f[7] or None, None, source_id, version,
-                ])
+        for line in open(path, encoding="utf-8-sig"):
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 8:
+                continue
+            m = re.match(r"^([HG])(\d+)$", f[0].strip())
+            if not m:
+                continue
+            sid = m.group(1) + str(int(m.group(2)))  # unpad: H0001 -> H1
+            if sid in emitted:
+                continue
+            emitted.add(sid)
+            rows.append([
+                sid, testament,
+                norm_text(f[3]),                 # lemma
+                norm_text(f[4]),                 # transliteration
+                None,                            # pronunciation (not provided)
+                norm_text(f[5]) or None,         # part_of_speech (e.g. H:N-M)
+                norm_text(strip_html(f[7])),     # definition (HTML stripped)
+                norm_text(f[6]),                 # gloss
+                None,                            # derivation
+                None,                            # usage_note
+                source_id, version,
+            ])
     rows.sort(key=lambda r: r[0])
     return rows
 
 
+def _tahot_lemma_gloss(col11, root):
+    """Extract lemma + gloss for the root strong's from the `Expanded Strong tags`
+    column, e.g. `H9003=ב=in/{H7225G=רֵאשִׁית=: beginning»first:1_beginning}`."""
+    if not root:
+        return None, None
+    for m in re.finditer(r"\{([HG]\d+[A-Za-z]?)=([^=]+)=([^»}=]*)", col11 or ""):
+        if m.group(1).lower() == root.lower():
+            return m.group(2), m.group(3).lstrip(": ")
+    return None, None
+
+
 def etl_verse_words(raw, warn):
-    src_dir = os.path.join(raw, "kjv_strongs")
     rows = []
-    if os.path.isdir(src_dir):
-        for fn in sorted(os.listdir(src_dir)):
-            if not fn.endswith(".json") or fn in ("books.json", "lexicon.json", "chapter_count.json"):
+
+    # TAGNT — Greek NT (NA27/28 base reading: edition flag contains uppercase N).
+    path = os.path.join(raw, "stepbible-tagnt.tsv")
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8-sig"):
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 12:
                 continue
-            text = open(os.path.join(src_dir, fn), encoding="utf-8").read()
-            for key, en in VERSE_KEY.findall(text):
-                parts = key.split("|")
-                if len(parts) != 3:
-                    continue
-                b = norm_book(parts[0])
-                if b is None:
-                    continue
-                try:
-                    ch, vs = int(parts[1]), int(parts[2])
-                except ValueError:
-                    continue
-                en = en.replace("<em>", "").replace("</em>", "")
-                order = 0
-                for raw_word in en.split():
-                    tags = STRONG_TAG.findall(raw_word)
-                    surface = STRONG_TAG.sub("", raw_word).strip().strip(",.;:!?")
-                    if not tags:
-                        if surface:
-                            rows.append([b, ch, vs, order, surface, None, None, None, None, None, "stepbible-tagnt"])
-                            order += 1
-                    else:
-                        for t in tags:
-                            rows.append([b, ch, vs, order, surface, t, None, t, None, None, "stepbible-tagnt"])
-                            order += 1
-    # Optional: STEPBible morphological TSV (book, chapter, verse, surface, strongs,
-    # morphology, extended, lemma, gloss).
-    for src_name, source_id in (("stepbible-tagnt.tsv", "stepbible-tagnt"), ("stepbible-tahot.tsv", "stepbible-tahot")):
-        path = os.path.join(raw, src_name)
-        if not os.path.exists(path):
+            m = STEP_REF_RE.match(f[0].strip())
+            if not m:
+                continue
+            b = STEP_BOOKS.get(m.group(1).lower())
+            if b is None or "N" not in m.group(5):
+                continue
+            ch, vs = int(m.group(2)), int(m.group(3))
+            order = int(m.group(4)) - 1
+            surface = norm_text(re.sub(r"\s*\([^)]*\)\s*$", "", f[1]))
+            dstrong, _, grammar = f[3].strip().partition("=")
+            lemma, _, gloss = f[4].strip().partition("=")
+            rows.append([
+                b, ch, vs, order,
+                surface,
+                classic_strongs(f[11]),
+                norm_text(grammar) or None,
+                norm_text(dstrong) or None,
+                norm_text(lemma) or None,
+                norm_text(gloss) or None,
+                "stepbible-tagnt",
+            ])
+
+    # TAHOT — Hebrew OT (Leningrad base reading: flag == "L").
+    path = os.path.join(raw, "stepbible-tahot.tsv")
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8-sig"):
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 12:
+                continue
+            m = STEP_REF_RE.match(f[0].strip())
+            if not m:
+                continue
+            b = STEP_BOOKS.get(m.group(1).lower())
+            if b is None or m.group(5) != "L":
+                continue
+            ch, vs = int(m.group(2)), int(m.group(3))
+            order = int(m.group(4)) - 1
+            surface = norm_text(f[1])
+            grammar = f[5].strip()
+            root = re.sub(r"_[A-Za-z]*$", "", f[8].strip())  # Root dStrong, strip instance
+            lemma, gloss = _tahot_lemma_gloss(f[11], root)
+            rows.append([
+                b, ch, vs, order,
+                surface,
+                classic_strongs(root),
+                norm_text(grammar) or None,
+                norm_text(root) or None,
+                norm_text(lemma) or None,
+                norm_text(gloss) or None,
+                "stepbible-tahot",
+            ])
+
+    # Dedupe by (book, chapter, verse, word_order) and stabilize order.
+    seen = set()
+    deduped = []
+    for r in rows:
+        key = (r[0], r[1], r[2], r[3])
+        if key in seen:
             continue
-        for line in open(path, encoding="utf-8"):
-            f = [c.strip() for c in line.split("\t")]
-            if len(f) < 9:
-                continue
-            b = norm_book(f[0])
-            try:
-                ch, vs = int(f[1]), int(f[2])
-            except ValueError:
-                warn(f"verse_words: bad reference {f[1]}:{f[2]}")
-                continue
-            if b is None or ch < 1 or vs < 1:
-                warn(f"verse_words: rejected row")
-                continue
-            rows.append([b, ch, vs, 0, f[3], f[4] or None, f[5] or None, f[6] or None, f[7] or None, f[8] or None, source_id])
-    # Stabilize word order per verse.
-    seen = {}
-    for row in rows:
-        key = (row[0], row[1], row[2])
-        row[3] = seen.get(key, 0)
-        seen[key] = row[3] + 1
-    rows.sort(key=lambda r: (r[0], r[1], r[2], r[3]))
-    return rows
+        seen.add(key)
+        deduped.append(r)
+    deduped.sort(key=lambda r: (r[0], r[1], r[2], r[3]))
+    return deduped
 
 
 def etl_xrefs(raw, warn):
@@ -323,32 +408,80 @@ def etl_xrefs(raw, warn):
     return rows
 
 
-def etl_topics(raw, warn, source_id, version):
-    path = os.path.join(raw, f"{source_id}.tsv")
-    if not os.path.exists(path):
-        return [], []
+def _expand_ref(b, c1, v1, c2, v2, chapter_max):
+    """Expand (c1,v1)..(c2,v2) into individual (book, chapter, verse) tuples using
+    real KJV chapter boundaries. Returns an empty list if the start is unknown."""
+    if (b, c1) not in chapter_max:
+        return []
+    out = []
+    c, v = c1, v1
+    while (c, v) <= (c2, v2):
+        out.append((b, c, v))
+        maxv = chapter_max.get((b, c))
+        if maxv is None:
+            break
+        if v < maxv:
+            v += 1
+        else:
+            c += 1
+            v = 1
+        if len(out) > 500:
+            break
+    return out
+
+
+def etl_topics(raw, warn, source_id, version, topics_fn, assertions_fn, valid_verses, chapter_max):
+    """Normalize a topical source (topics.jsonl + assertions.jsonl) into
+    `topics.tsv` rows and `topic_verses.tsv` rows (topic -> one verse each)."""
     topics = {}
+    topics_path = os.path.join(raw, topics_fn)
+    if os.path.exists(topics_path):
+        for line in open(topics_path, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            tid = d.get("id")
+            if tid:
+                topics[tid] = norm_text(d.get("sourceTopic", tid))
+
     refs = []
-    for line in open(path, encoding="utf-8"):
-        f = [c.strip() for c in line.split("\t")]
-        if len(f) < 4:
-            continue
-        name = norm_text(f[0])
-        b = norm_book(f[1])
-        try:
-            ch, vs = int(f[2]), int(f[3])
-        except ValueError:
-            warn(f"topics: bad reference {f[2]}:{f[3]}")
-            continue
-        if not name or b is None or ch < 1 or vs < 1:
-            warn(f"topics: rejected row {f[:4]!r}")
-            continue
-        topic_id = f"{source_id}::{re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')}"
-        topics[topic_id] = name
-        refs.append((topic_id, b, ch, vs))
+    dropped = 0
+    assertions_path = os.path.join(raw, assertions_fn)
+    if os.path.exists(assertions_path):
+        for line in open(assertions_path, encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if d.get("sourceStatus") != "source_valid":
+                continue
+            tid = d.get("topicId")
+            if not tid:
+                continue
+            b = norm_book(d.get("book", ""))
+            if b is None:
+                dropped += 1
+                continue
+            topics.setdefault(tid, norm_text(d.get("sourceTopic", tid)))
+            c1 = _int(d.get("chapterStart"), 1)
+            if d.get("scope") == "chapter":
+                v1, c2, v2 = 1, c1, chapter_max.get((b, c1), 1)
+            else:
+                v1 = _int(d.get("verseStart"), 1)
+                c2 = _int(d.get("chapterEnd"), c1)
+                v2 = _int(d.get("verseEnd"), v1)
+            for (bb, cc, vv) in _expand_ref(b, c1, v1, c2, v2, chapter_max):
+                if (bb, cc, vv) in valid_verses:
+                    refs.append((tid, bb, cc, vv))
+                else:
+                    dropped += 1
+    if dropped:
+        warn(f"topics({source_id}): {dropped} references rejected (unknown verse/chapter)")
+
     topic_rows = sorted((tid, topics[tid], source_id, version) for tid in topics)
-    topic_verse_rows = sorted(set(refs))
-    return topic_rows, [(tid, b, c, v, 1.0, source_id) for (tid, b, c, v) in topic_verse_rows]
+    topic_verse_rows = sorted((tid, b, c, v, 1.0, source_id) for (tid, b, c, v) in sorted(set(refs)))
+    return topic_rows, topic_verse_rows
 
 
 # ── Driver + manifest ─────────────────────────────────────────────────────────
@@ -367,26 +500,52 @@ def run(raw_dir, clean_dir):
     outputs = {}
     raw_checksums = {}
 
-    def ingest(name, rows, out_name):
+    def checksum_raw(name):
+        p = os.path.join(raw_dir, name)
+        if os.path.exists(p):
+            raw_checksums[name] = sha256(p)
+
+    def put(out_name, rows):
         if rows:
             outputs[out_name] = rows
-        raw_path = os.path.join(raw_dir, name)
-        if os.path.exists(raw_path):
-            raw_checksums[name] = sha256(raw_path)
 
-    ingest("t_kjv.csv", etl_verses(raw_dir, warn), "verses.tsv")
-    ingest("strongs-greek.js", etl_lexicon(raw_dir, warn), "lexicon.tsv")
-    ingest("kjv_strongs", etl_verse_words(raw_dir, warn), "verse_words.tsv")
-    ingest("cross_references.txt", etl_xrefs(raw_dir, warn), "xrefs.tsv")
+    verses = etl_verses(raw_dir, warn)
+    checksum_raw("t_kjv.csv")
+    put("verses.tsv", verses)
 
-    naves_t, naves_tv = etl_topics(raw_dir, warn, "naves-topical", "1896")
-    torrey_t, torrey_tv = etl_topics(raw_dir, warn, "torrey-topical", "1897")
+    valid_verses = {(b, c, v) for (b, c, v, _t) in verses}
+    chapter_max = {}
+    for (b, c, v, _t) in verses:
+        chapter_max[(b, c)] = max(chapter_max.get((b, c), 0), v)
+
+    lexicon = etl_lexicon(raw_dir, warn)
+    for n in ("strongs-greek.js", "strongs-hebrew.js", "stepbible-tbesh.tsv", "stepbible-tbesg.tsv"):
+        checksum_raw(n)
+    put("lexicon.tsv", lexicon)
+
+    verse_words = etl_verse_words(raw_dir, warn)
+    for n in ("stepbible-tagnt.tsv", "stepbible-tahot.tsv"):
+        checksum_raw(n)
+    put("verse_words.tsv", verse_words)
+
+    xrefs = etl_xrefs(raw_dir, warn)
+    checksum_raw("cross_references.txt")
+    put("xrefs.tsv", xrefs)
+
+    naves_t, naves_tv = etl_topics(
+        raw_dir, warn, "naves-topical", "1896",
+        "naves-topics.jsonl", "naves-assertions.jsonl", valid_verses, chapter_max,
+    )
+    torrey_t, torrey_tv = etl_topics(
+        raw_dir, warn, "torrey-topical", "1897",
+        "torrey-topics.jsonl", "torrey-assertions.jsonl", valid_verses, chapter_max,
+    )
+    for n in ("naves-topics.jsonl", "naves-assertions.jsonl", "torrey-topics.jsonl", "torrey-assertions.jsonl"):
+        checksum_raw(n)
     topics = sorted(naves_t + torrey_t)
     topic_verses = sorted(naves_tv + torrey_tv)
-    if topics:
-        outputs["topics.tsv"] = topics
-    if topic_verses:
-        outputs["topic_verses.tsv"] = topic_verses
+    put("topics.tsv", topics)
+    put("topic_verses.tsv", topic_verses)
 
     row_counts = {}
     output_checksums = {}
@@ -414,9 +573,17 @@ def run(raw_dir, clean_dir):
 
 _FIXTURES = {
     "t_kjv.csv": "id,b,c,v,t\n1003001,43,3,16,For God so loved the world.\n1003028,45,8,28,And we know.\n",
-    "strongs-greek.js": "{\"G26\": {\"lemma\": \"agape\", \"translit\": \"agape\", \"pron\": \"ag-ah'-pay\", \"part_of_speech\": \"n f\", \"strongs_def\": \"love\", \"kjv_def\": \"love\", \"derivation\": \"from G25\"}}\n",
+    "strongs-greek.js": '{"G26": {"lemma": "agape", "translit": "agape", "strongs_def": "love", "kjv_def": "love", "derivation": "from G25"}}\n',
+    "strongs-hebrew.js": '{"H430": {"lemma": "elohim", "xlit": "elohim", "pron": "el-o-heem", "strongs_def": "God", "kjv_def": "God", "derivation": "plural of H433"}}\n',
+    "stepbible-tbesh.tsv": "TBESH header\nH9001\tH9001 =\tH9001\tav\tav\tH:N-M\tfather\tfather <b>definition</b>\n",
+    "stepbible-tbesg.tsv": "TBESG header\nG9999\tG9999 =\tG9999\tab\tab\tG:N\tgloss\tdefinition text\n",
+    "stepbible-tagnt.tsv": "Word & Type\tGreek\tEnglish translation\tdStrongs = Grammar\tDictionary form = Gloss\teditions\tMeaning variants\tSpelling variants\tSpanish translation\tSub-meaning\tConjoin word\tsStrong+Instance\tAlt Strongs\nMat.1.1#01=NKO\tΒίβλος (Biblos)\tbook\tG0976=N-NSF\tβίβλος=book\tNA28\t\t\t\tbook\t#01\tG0976\n",
+    "stepbible-tahot.tsv": "Eng (Heb) Ref & Type\tHebrew\tTransliteration\tTranslation\tdStrongs\tGrammar\tMeaning Variants\tSpelling Variants\tRoot dStrong+Instance\tAlternative Strongs+Instance\tConjoin word\tExpanded Strong tags\nGen.1.1#01=L\tרֵאשִׁית\treshit\tbeginning\t{H7225G}\tHNcfsa\t\t\tH7225G\t\t\t{H7225G=רֵאשִׁית=: beginning}\n",
     "cross_references.txt": "From Verse\tTo Verse\tVotes\t#www.openbible.info\nJohn.3.16\tRom.8.28\t50\n",
-    "naves-topical.tsv": "Love\tJohn\t3\t16\nLove\tRom\t8\t28\n",
+    "naves-topics.jsonl": '{"id":"nave:love","source":"nave","sourceTopic":"LOVE"}\n',
+    "naves-assertions.jsonl": '{"topicId":"nave:love","source":"nave","sourceStatus":"source_valid","sourceTopic":"LOVE","book":"John","chapterStart":3,"verseStart":16,"chapterEnd":3,"verseEnd":16,"scope":"verse"}\n',
+    "torrey-topics.jsonl": '{"id":"torrey:faith","source":"torrey","sourceTopic":"Faith"}\n',
+    "torrey-assertions.jsonl": '{"topicId":"torrey:faith","source":"torrey","sourceStatus":"source_valid","sourceTopic":"Faith","book":"Romans","chapterStart":8,"verseStart":28,"chapterEnd":8,"verseEnd":28,"scope":"verse"}\n',
 }
 
 
@@ -431,9 +598,10 @@ def self_test(tmp_dir):
     m2 = run(raw, os.path.join(tmp_dir, "clean-b"))
     assert m1 == m2, "ETL must be deterministic"
     assert m1["row_counts"].get("verses.tsv") == 2
-    assert m1["row_counts"].get("lexicon.tsv") == 1
+    assert m1["row_counts"].get("lexicon.tsv") == 4
+    assert m1["row_counts"].get("verse_words.tsv") == 2
     assert m1["row_counts"].get("xrefs.tsv") == 1
-    assert m1["row_counts"].get("topics.tsv") == 1
+    assert m1["row_counts"].get("topics.tsv") == 2
     assert m1["row_counts"].get("topic_verses.tsv") == 2
     with open(os.path.join(tmp_dir, "clean-a", "verses.tsv"), encoding="utf-8") as f:
         assert "43\t3\t16\tFor God so loved the world." in f.read()
