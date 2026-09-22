@@ -44,6 +44,8 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
+  IntelligenceResult,
+  SermonInsightsInput,
 } from './types';
 import { isTauriRuntime } from './runtime';
 
@@ -224,5 +226,19 @@ export class TauriSermonBackend implements SermonBackend {
   }
   async testDirectiveCodec(input: string): Promise<CodecRoundTripResult> {
     return tauriInvoke('test_directive_codec', { input });
+  }
+
+  // ── Sermon Intelligence (Track L presents; Track J computes) ───────────────
+  // Not linked yet: the native Intelligence engine lands in a later fan-in.
+  // Until then these surface as explicit "unsupported" errors, never as mock data.
+
+  async getSermonInsights(_input: SermonInsightsInput): Promise<IntelligenceResult> {
+    throw new BackendCommandError('get_sermon_insights', 'unsupported: Sermon Intelligence engine is not linked yet');
+  }
+  async getRelatedSermons(_sermonId: string): Promise<IntelligenceResult> {
+    throw new BackendCommandError('get_related_sermons', 'unsupported: Sermon Intelligence engine is not linked yet');
+  }
+  async getPassageHistory(_reference: string): Promise<IntelligenceResult> {
+    throw new BackendCommandError('get_passage_history', 'unsupported: Sermon Intelligence engine is not linked yet');
   }
 }

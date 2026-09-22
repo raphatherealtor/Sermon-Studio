@@ -34,12 +34,160 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
+  IntelligenceResult,
+  Insight,
+  Evidence,
+  SermonInsightsInput,
 } from './types';
 // Fix 5: Import the shared frontend codec — MockSermonBackend provides fixtures only,
 // not the codec implementation.
 import { testRoundTrip } from '@/editor/codec/directiveCodec';
 
 const delay = (ms = 220) => new Promise<void>((r) => setTimeout(r, ms));
+
+// ── Sermon Intelligence fixtures (deterministic; Track J computes) ──────────
+// These are static presentation fixtures only. No scoring/search/correlation
+// logic lives here — every value is a literal that mirrors Track J's DTOs.
+
+const INTELLIGENCE_ENGINE_VERSION = 'mock-1.0.0';
+const INTELLIGENCE_GENERATED_AT = '2026-09-20T12:00:00Z';
+
+function evidence(
+  kind: string,
+  label: string,
+  value: string,
+  opts: { weight?: number; sermonIds?: string[]; references?: string[]; source?: Evidence['source'] } = {},
+): Evidence {
+  return {
+    kind,
+    label,
+    value,
+    weight: opts.weight ?? 1,
+    sermonIds: opts.sermonIds ?? [],
+    references: opts.references ?? [],
+    source: opts.source,
+  };
+}
+
+function insight(
+  id: string,
+  kind: Insight['kind'],
+  title: string,
+  summary: string,
+  opts: { score?: number; evidence?: Evidence[]; relatedSermonIds?: string[] } = {},
+): Insight {
+  return {
+    id,
+    kind,
+    title,
+    summary,
+    score: opts.score ?? 0,
+    evidence: opts.evidence ?? [],
+    relatedSermonIds: opts.relatedSermonIds ?? [],
+  };
+}
+
+/** Archive-only insights (no biblical-study evidence), for the no-canon.db case. */
+function archiveOnlyInsights(): Insight[] {
+  return [
+    insight('rel-gospel-of-john', 'related-sermon', 'Related to your Gospel of John series', 'These sermons share the Gospel of John series.', {
+      score: 70,
+      relatedSermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'],
+      evidence: [
+        evidence('series', 'Same series', 'Gospel of John', { weight: 3, sermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'], source: 'archive' }),
+      ],
+    }),
+    insight('ill-pattern-bread', 'illustration-pattern', 'Illustration: bread and hunger', 'The bread/hunger illustration appears in 2 sermons.', {
+      score: 41,
+      relatedSermonIds: ['sermon-009'],
+      evidence: [
+        evidence('illustration', 'Illustration reuse', 'bread / hunger (2 uses)', { weight: 2, sermonIds: ['sermon-009'], source: 'archive' }),
+      ],
+    }),
+  ];
+}
+
+/** Full fixture for a subject sermon, with archive + biblical-study evidence. */
+function fullInsights(sermonId: string, reference: string): IntelligenceResult {
+  return {
+    engineVersion: INTELLIGENCE_ENGINE_VERSION,
+    generatedAt: INTELLIGENCE_GENERATED_AT,
+    subjectSermonId: sermonId,
+    subjectReference: reference,
+    biblicalDataAvailable: true,
+    insights: [
+      insight('rel-gospel-of-john', 'related-sermon', 'Related to your Gospel of John series', 'These sermons share the Gospel of John series and overlapping passages.', {
+        score: 87,
+        relatedSermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'],
+        evidence: [
+          evidence('series', 'Same series', 'Gospel of John', { weight: 3, sermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'], source: 'archive' }),
+          evidence('shared-reference', 'Shared reference', 'John 6:35', { weight: 2, sermonIds: ['sermon-002'], references: ['John 6:35'], source: 'biblical-study' }),
+        ],
+      }),
+      insight('ref-overlap-john', 'reference-overlap', '3 shared supporting references', 'Your archive contains sermons that cite the same supporting passages.', {
+        score: 64,
+        relatedSermonIds: ['sermon-002', 'sermon-003', 'sermon-013'],
+        evidence: [
+          evidence('shared-reference', 'Shared reference', 'John 6:35', { weight: 2, sermonIds: ['sermon-002'], references: ['John 6:35'], source: 'biblical-study' }),
+          evidence('shared-reference', 'Shared reference', 'John 1:1–14', { weight: 1, sermonIds: ['sermon-002', 'sermon-013'], references: ['John 1:1'], source: 'biblical-study' }),
+        ],
+      }),
+      insight('big-idea-bread-life', 'big-idea-overlap', 'Big Idea overlap: life and sustenance', 'These sermons share Big Idea terms: life, bread, sustain.', {
+        score: 52,
+        relatedSermonIds: ['sermon-002', 'sermon-014'],
+        evidence: [
+          evidence('big-idea-term', 'Shared Big Idea terms', 'life, bread', { weight: 2, sermonIds: ['sermon-002', 'sermon-014'], source: 'archive' }),
+        ],
+      }),
+      insight('series-gospel-of-john', 'series-overlap', 'Part of the Gospel of John series', '4 sermons belong to the same series.', {
+        score: 70,
+        relatedSermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'],
+        evidence: [
+          evidence('series', 'Same series', 'Gospel of John', { weight: 3, sermonIds: ['sermon-002', 'sermon-003', 'sermon-013', 'sermon-014'], source: 'archive' }),
+        ],
+      }),
+      insight('ill-pattern-bread', 'illustration-pattern', 'Illustration: bread and hunger', 'The bread/hunger illustration appears in 2 sermons.', {
+        score: 41,
+        relatedSermonIds: ['sermon-009'],
+        evidence: [
+          evidence('illustration', 'Illustration reuse', 'bread / hunger (2 uses)', { weight: 2, sermonIds: ['sermon-009'], source: 'archive' }),
+        ],
+      }),
+      insight('struct-3-movements', 'structure-overlap', 'Structure overlap: 3 movements', 'Mechanically measured: these sermons share a 3-movement outline.', {
+        score: 38,
+        relatedSermonIds: ['sermon-002', 'sermon-003'],
+        evidence: [
+          evidence('structure', 'Outline shape', '3 movements, 1 application', { weight: 1, sermonIds: ['sermon-002', 'sermon-003'], source: 'archive' }),
+        ],
+      }),
+      insight('history-john-10', 'passage-history', 'You preached John 10 once', 'Preaching history for the related passage John 10:11–18.', {
+        score: 0,
+        relatedSermonIds: ['sermon-003'],
+        evidence: [
+          evidence('passage-history', 'Preached', 'John 10:11–18 — 1 time (2026-09-07)', { weight: 3, sermonIds: ['sermon-003'], source: 'archive' }),
+        ],
+      }),
+    ],
+  };
+}
+
+function passageHistoryInsights(reference: string): IntelligenceResult {
+  return {
+    engineVersion: INTELLIGENCE_ENGINE_VERSION,
+    generatedAt: INTELLIGENCE_GENERATED_AT,
+    subjectReference: reference,
+    biblicalDataAvailable: true,
+    insights: [
+      insight('history-fixture', 'passage-history', `You preached ${reference} in your archive`, 'Preaching history for this passage.', {
+        score: 0,
+        relatedSermonIds: ['sermon-003', 'sermon-004'],
+        evidence: [
+          evidence('passage-history', 'Preached', `${reference} — 2 times (2026-09-07, 2026-08-25)`, { weight: 3, sermonIds: ['sermon-003', 'sermon-004'], source: 'archive' }),
+        ],
+      }),
+    ],
+  };
+}
 
 // ── Mock sermon list ──────────────────────────────────────────────────────────
 
@@ -1124,5 +1272,45 @@ export class MockSermonBackend implements SermonBackend {
     await delay(100);
     // Use the shared frontend transport codec
     return testRoundTrip(input);
+  }
+
+  // ── Sermon Intelligence (Track L presents; fixtures only) ─────────────────
+
+  async getSermonInsights(input: SermonInsightsInput): Promise<IntelligenceResult> {
+    await delay(180);
+    // Deterministic fixture cases. Track J's engine computes these for real;
+    // the mock only returns static, evidence-backed results.
+    if (input.sermonId === 'sermon-empty' || input.sermonId === 'sermon-insufficient') {
+      return {
+        engineVersion: INTELLIGENCE_ENGINE_VERSION,
+        generatedAt: INTELLIGENCE_GENERATED_AT,
+        subjectSermonId: input.sermonId,
+        subjectReference: input.reference,
+        biblicalDataAvailable: true,
+        insights: [],
+      };
+    }
+    if (input.sermonId === 'sermon-no-canon') {
+      return {
+        engineVersion: INTELLIGENCE_ENGINE_VERSION,
+        generatedAt: INTELLIGENCE_GENERATED_AT,
+        subjectSermonId: input.sermonId,
+        subjectReference: input.reference,
+        biblicalDataAvailable: false,
+        insights: archiveOnlyInsights(),
+      };
+    }
+    return fullInsights(input.sermonId, input.reference ?? 'John 6:35–51');
+  }
+
+  async getRelatedSermons(sermonId: string): Promise<IntelligenceResult> {
+    await delay(180);
+    const result = fullInsights(sermonId, 'John 6:35–51');
+    return { ...result, insights: result.insights.filter((i) => i.kind === 'related-sermon') };
+  }
+
+  async getPassageHistory(reference: string): Promise<IntelligenceResult> {
+    await delay(180);
+    return passageHistoryInsights(reference || 'John 6:35');
   }
 }

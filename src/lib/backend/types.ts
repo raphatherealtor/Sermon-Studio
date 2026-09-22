@@ -457,3 +457,55 @@ export interface CreateExportSnapshotRequest {
 export interface RevealFileRequest {
   path: string;
 }
+
+// ── Sermon Intelligence (Track L presentation; Track J computes) ─────────────
+// The frontend models this locked contract and renders results only. No
+// scoring, search, correlation, or evidence synthesis happens in TypeScript —
+// all insight content (including scores and evidence) is backend-provided.
+
+export type InsightKind =
+  | 'related-sermon'
+  | 'passage-history'
+  | 'reference-overlap'
+  | 'big-idea-overlap'
+  | 'series-overlap'
+  | 'illustration-pattern'
+  | 'structure-overlap';
+
+export type EvidenceSource = 'archive' | 'biblical-study';
+
+export interface Evidence {
+  kind: string;
+  label: string;
+  value: string;
+  weight: number;
+  sermonIds: string[];
+  references: string[];
+  /** Provenance: archive-derived or biblical-study-derived. */
+  source?: EvidenceSource;
+}
+
+export interface Insight {
+  id: string;
+  kind: InsightKind;
+  title: string;
+  summary: string;
+  score: number;
+  evidence: Evidence[];
+  relatedSermonIds: string[];
+}
+
+export interface IntelligenceResult {
+  engineVersion: string;
+  generatedAt: string;
+  subjectSermonId?: string;
+  subjectReference?: string;
+  /** False when the packaged prototype has no canon.db; archive insights still render. */
+  biblicalDataAvailable: boolean;
+  insights: Insight[];
+}
+
+export interface SermonInsightsInput {
+  sermonId: string;
+  reference?: string;
+}
