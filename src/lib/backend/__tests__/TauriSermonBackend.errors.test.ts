@@ -73,6 +73,13 @@ describe('command surface completeness', () => {
     'loadSettings',
     'saveSettings',
     'testDirectiveCodec',
+    'attachResearchFile',
+    'listResearchAttachments',
+    'getResearchAttachment',
+    'getExtractedPages',
+    'updateResearchMetadata',
+    'removeResearchAttachment',
+    'openResearchFile',
   ] as const;
 
   it('implements every SermonBackend method', () => {

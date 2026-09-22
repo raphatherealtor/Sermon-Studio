@@ -2,13 +2,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
-import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb,  } from 'lucide-react';
+import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, FileText,  } from 'lucide-react';
 import type {
   PassageResult, StrongsEntry, CrossReference, PreachedResult, IllustrationFatigueResult,
 } from '@/lib/backend/types';
+import type {
+  ResearchAttachment,
+  ExtractedPage,
+} from '@/lib/backend/contracts/research_packet';
 import InsightsPanel from './InsightsPanel';
 
-type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights';
+type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights' | 'research';
 
 const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title: string }[] = [
   { id: 'passage', label: 'Passage', icon: Book, title: 'Scripture Passage' },
@@ -17,6 +21,7 @@ const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title:
   { id: 'history', label: 'History', icon: Clock, title: 'Preached On' },
   { id: 'fatigue', label: 'Fatigue', icon: BarChart2, title: 'Illustration Fatigue' },
   { id: 'insights', label: 'Insights', icon: Lightbulb, title: 'Sermon Intelligence' },
+  { id: 'research', label: 'Research', icon: FileText, title: 'Research Packet' },
 ];
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -82,6 +87,16 @@ export default function StudyRail() {
   const [fatigue, setFatigue] = useState<IllustrationFatigueResult[]>([]);
   const [fatigueLoading, setFatigueLoading] = useState(false);
   const [fatigueError, setFatigueError] = useState<string | null>(null);
+
+  // ── Research packet state (Track O) ───────────────────────────────────────
+  const [research, setResearch] = useState<ResearchAttachment[]>([]);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [selectedAttId, setSelectedAttId] = useState<string | null>(null);
+  const [pages, setPages] = useState<ExtractedPage[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Auto-populate reference from active document
   useEffect(() => {
@@ -171,6 +186,103 @@ export default function StudyRail() {
     if (tab === 'xref') lookupXrefs();
     if (tab === 'history') lookupHistory();
     if (tab === 'fatigue') loadFatigue();
+    if (tab === 'research') loadResearch();
+  };
+
+  // ── Research packet handlers (Track O) ────────────────────────────────────
+
+  const loadResearch = useCallback(async () => {
+    if (!activeDocument?.id) return;
+    setResearchLoading(true);
+    setResearchError(null);
+    try {
+      const list = await backend.listResearchAttachments(activeDocument.id);
+      setResearch(list);
+    } catch {
+      setResearchError('Failed to load research packet.');
+    } finally {
+      setResearchLoading(false);
+    }
+  }, [backend, activeDocument?.id]);
+
+  // Refresh the packet when the sermon changes or the tab is active on mount.
+  useEffect(() => {
+    if (activeTab === 'research') {
+      setSelectedAttId(null);
+      setPages([]);
+      loadResearch();
+    }
+  }, [activeTab, activeDocument?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectAttachment = async (att: ResearchAttachment) => {
+    if (!activeDocument?.id) return;
+    setSelectedAttId(att.id);
+    setPages([]);
+    setPagesLoading(true);
+    try {
+      const extracted = await backend.getExtractedPages(activeDocument.id, att.id);
+      setPages(extracted);
+    } catch {
+      setResearchError('Failed to load extracted pages.');
+    } finally {
+      setPagesLoading(false);
+    }
+  };
+
+  const handleAttach = async (file: File) => {
+    if (!activeDocument?.id) return;
+    setAttachBusy(true);
+    setResearchError(null);
+    try {
+      await backend.attachResearchFile({
+        sermonId: activeDocument.id,
+        // In the browser mock the name is the transport handle; under Tauri the
+        // file dialog supplies the absolute path before this call is made.
+        sourcePath: (file as File & { path?: string }).path ?? file.name,
+        title: file.name,
+      });
+      await loadResearch();
+    } catch {
+      setResearchError('Import failed. PDFs up to 50 MB are supported.');
+    } finally {
+      setAttachBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemove = async (att: ResearchAttachment) => {
+    if (!activeDocument?.id) return;
+    try {
+      await backend.removeResearchAttachment(activeDocument.id, att.id);
+      if (selectedAttId === att.id) {
+        setSelectedAttId(null);
+        setPages([]);
+      }
+      await loadResearch();
+    } catch {
+      setResearchError('Failed to remove attachment.');
+    }
+  };
+
+  const handleSaveNotes = async (att: ResearchAttachment, notes: string) => {
+    if (!activeDocument?.id) return;
+    try {
+      const updated = await backend.updateResearchMetadata(activeDocument.id, att.id, {
+        userNotes: notes,
+      });
+      setResearch((prev) => prev.map((a) => (a.id === att.id ? updated : a)));
+    } catch {
+      setResearchError('Failed to save notes.');
+    }
+  };
+
+  const handleOpenFile = async (att: ResearchAttachment) => {
+    if (!activeDocument?.id) return;
+    try {
+      await backend.openResearchFile(activeDocument.id, att.id);
+    } catch {
+      setResearchError('Failed to open the stored file.');
+    }
   };
 
   const handleReferenceSearch = () => {
@@ -199,7 +311,7 @@ export default function StudyRail() {
       </div>
 
       {/* Reference input (shared for passage/xref/history) */}
-      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && (
+      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && activeTab !== 'research' && (
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
           <div className="flex gap-1.5">
             <input
@@ -567,6 +679,148 @@ export default function StudyRail() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Research Packet tab (Track O) ── */}
+        {activeTab === 'research' && (
+          <div className="p-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              data-testid="research-file-input"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleAttach(f);
+              }}
+            />
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-2xs font-mono-data uppercase tracking-widest text-fg-dim">
+                Research Packet
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={attachBusy || !activeDocument}
+                  className="btn-ghost py-0.5 px-1.5 text-2xs"
+                  title="Attach a PDF"
+                >
+                  {attachBusy ? <Loader2 size={10} className="animate-spin-slow" /> : <Plus size={10} />}
+                  <span>Attach PDF</span>
+                </button>
+                <button onClick={loadResearch} className="btn-ghost py-0.5 px-1.5 text-2xs" title="Refresh">
+                  <RefreshCw size={10} />
+                </button>
+              </div>
+            </div>
+
+            {!activeDocument && (
+              <p className="text-xs text-fg-dim py-6 text-center">
+                Open a sermon to manage its research packet.
+              </p>
+            )}
+
+            {activeDocument && researchLoading && (
+              <div className="flex items-center gap-2 text-fg-dim py-6 justify-center">
+                <Loader2 size={14} className="animate-spin-slow" />
+                <span className="text-xs">Loading packet…</span>
+              </div>
+            )}
+
+            {activeDocument && researchError && (
+              <div className="py-3 text-center">
+                <AlertTriangle size={14} className="text-alert-red mx-auto mb-1" />
+                <p className="text-2xs text-alert-red mb-1">{researchError}</p>
+                <button onClick={loadResearch} className="text-2xs text-accent transition-colors">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {activeDocument && !researchLoading && !researchError && research.length === 0 && (
+              <p className="text-xs text-fg-dim py-6 text-center">
+                No research attached. PDFs stay in the packet — never in the archive index.
+              </p>
+            )}
+
+            {activeDocument && research.map((att) => (
+              <div key={att.id} className="border border-border rounded-md mb-2 overflow-hidden">
+                <div className="px-2 py-1.5 flex items-start justify-between gap-1">
+                  <button
+                    onClick={() => selectAttachment(att)}
+                    className="text-left flex-1 min-w-0"
+                    title={att.originalFilename}
+                  >
+                    <p className="text-xs font-600 text-fg truncate">{att.title || att.originalFilename}</p>
+                    <p className="text-2xs font-mono-data text-fg-dim">
+                      {att.extraction === 'ok'
+                        ? `${att.pageCount ?? '?'}p · extracted`
+                        : att.extraction === 'no-text'
+                          ? 'no extractable text'
+                          : att.extraction === 'failed'
+                            ? 'extraction failed'
+                            : 'not extracted'}
+                    </p>
+                  </button>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button onClick={() => handleOpenFile(att)} className="btn-ghost py-0.5 px-1 text-2xs" title="Open stored PDF">
+                      <FileText size={10} />
+                    </button>
+                    <button onClick={() => handleRemove(att)} className="btn-ghost py-0.5 px-1 text-2xs" title="Remove">
+                      <X size={10} />
+                    </button>
+                  </div>
+                </div>
+                <div className="px-2 pb-1">
+                  <span className="text-2xs font-mono-data uppercase tracking-widest text-accent">
+                    research packet
+                  </span>
+                </div>
+
+                {selectedAttId === att.id && (
+                  <div className="border-t border-border px-2 py-2">
+                    {pagesLoading && (
+                      <div className="flex items-center gap-2 text-fg-dim py-3 justify-center">
+                        <Loader2 size={12} className="animate-spin-slow" />
+                        <span className="text-2xs">Extracting…</span>
+                      </div>
+                    )}
+                    {!pagesLoading && pages.length === 0 && (
+                      <p className="text-2xs text-fg-dim py-2">
+                        {att.extraction === 'no-text'
+                          ? 'This PDF contains no extractable text.'
+                          : 'No extracted pages available.'}
+                      </p>
+                    )}
+                    {!pagesLoading && pages.map((p) => (
+                      <div key={p.page} className="mb-2">
+                        <p className="text-2xs font-mono-data text-fg-dim mb-0.5">Page {p.page}</p>
+                        {/* Inert text rendering: extracted content is never HTML. */}
+                        <pre className="text-2xs text-fg whitespace-pre-wrap font-body max-h-40 overflow-y-auto bg-elevated rounded p-1.5">
+                          {p.text}
+                        </pre>
+                        <div className="flex gap-1 mt-0.5">
+                          <CopyButton text={p.text} label="Copy" />
+                          <InsertButton text={p.text} label="Insert" />
+                        </div>
+                      </div>
+                    ))}
+                    <textarea
+                      defaultValue={att.userNotes ?? ''}
+                      placeholder="Notes about this source…"
+                      className="input-field text-2xs w-full mt-1 h-14 resize-y"
+                      onBlur={(e) => {
+                        if (e.target.value !== (att.userNotes ?? '')) {
+                          handleSaveNotes(att, e.target.value);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

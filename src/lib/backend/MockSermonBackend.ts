@@ -42,6 +42,14 @@ import type {
 // Fix 5: Import the shared frontend codec — MockSermonBackend provides fixtures only,
 // not the codec implementation.
 import { testRoundTrip } from '@/editor/codec/directiveCodec';
+// Track O: research-packet transport shapes (fixture-only mock; Rust owns the store).
+import type {
+  AttachResearchFileRequest,
+  ExtractedPage,
+  OpenResearchFileResult,
+  ResearchAttachment,
+  UpdateResearchMetadataRequest,
+} from './contracts/research_packet';
 
 const delay = (ms = 220) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -1315,5 +1323,121 @@ export class MockSermonBackend implements SermonBackend {
   async getPassageHistory(reference: string): Promise<IntelligenceResult> {
     await delay(180);
     return passageHistoryInsights(reference || 'John 6:35');
+  }
+
+  // ── Research packets (Track O) ────────────────────────────────────────────
+  // Transport-level mock only: canned in-memory attachments. Rust owns real
+  // content-addressing, confinement, extraction, and manifest semantics;
+  // the mock preserves the transport shapes so the StudyRail surface is
+  // developable in the browser. No lint/reference fixtures are touched here.
+
+  private researchStore = new Map<string, ResearchAttachment[]>();
+  private researchPages = new Map<string, ExtractedPage[]>();
+  private researchSeq = 0;
+
+  private researchKey(sermonId: string, attachmentId: string): string {
+    return `${sermonId}/${attachmentId}`;
+  }
+
+  async attachResearchFile(
+    request: AttachResearchFileRequest,
+  ): Promise<ResearchAttachment> {
+    await delay(120);
+    // Mock identity: content addressing is Rust's job; here a per-file counter.
+    this.researchSeq += 1;
+    const id = `mock-att-${String(this.researchSeq).padStart(3, '0')}`;
+    const filename = request.sourcePath.split(/[\\/]/).pop() ?? 'attachment.pdf';
+    const now = new Date().toISOString();
+    const attachment: ResearchAttachment = {
+      id,
+      originalFilename: filename,
+      storedFilename: `mock-${id}.pdf`,
+      title: request.title,
+      author: request.author,
+      source: request.source,
+      dateAdded: now,
+      mimeType: 'application/pdf',
+      byteSize: 0,
+      checksum: `mock-checksum-${this.researchSeq}`,
+      extraction: 'ok',
+      importProvenance: { importedFrom: request.sourcePath, importedAt: now },
+      provenanceClass: 'research-packet',
+    };
+    const list = this.researchStore.get(request.sermonId) ?? [];
+    // Idempotent dedup mirrors the Rust contract: same source path returns
+    // the existing attachment instead of duplicating it.
+    const existing = list.find((a) => a.importProvenance.importedFrom === request.sourcePath);
+    if (existing) return existing;
+    list.push(attachment);
+    this.researchStore.set(request.sermonId, list);
+    this.researchPages.set(this.researchKey(request.sermonId, id), [
+      { page: 1, text: `Mock extraction for ${filename}.\n\nPage 1 text.` },
+    ]);
+    return attachment;
+  }
+
+  async listResearchAttachments(sermonId: string): Promise<ResearchAttachment[]> {
+    await delay(60);
+    return this.researchStore.get(sermonId) ?? [];
+  }
+
+  private requireResearchAttachment(
+    sermonId: string,
+    attachmentId: string,
+  ): ResearchAttachment {
+    const att = (this.researchStore.get(sermonId) ?? []).find((a) => a.id === attachmentId);
+    if (!att) throw new Error(`attachment not found: ${attachmentId}`);
+    return att;
+  }
+
+  async getResearchAttachment(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ResearchAttachment> {
+    await delay(60);
+    return this.requireResearchAttachment(sermonId, attachmentId);
+  }
+
+  async getExtractedPages(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ExtractedPage[]> {
+    await delay(60);
+    this.requireResearchAttachment(sermonId, attachmentId);
+    return this.researchPages.get(this.researchKey(sermonId, attachmentId)) ?? [];
+  }
+
+  async updateResearchMetadata(
+    sermonId: string,
+    attachmentId: string,
+    patch: UpdateResearchMetadataRequest,
+  ): Promise<ResearchAttachment> {
+    await delay(60);
+    const att = this.requireResearchAttachment(sermonId, attachmentId);
+    const updated: ResearchAttachment = { ...att, ...patch };
+    const list = (this.researchStore.get(sermonId) ?? []).map((a) =>
+      a.id === attachmentId ? updated : a,
+    );
+    this.researchStore.set(sermonId, list);
+    return updated;
+  }
+
+  async removeResearchAttachment(sermonId: string, attachmentId: string): Promise<void> {
+    await delay(60);
+    this.requireResearchAttachment(sermonId, attachmentId);
+    const list = (this.researchStore.get(sermonId) ?? []).filter(
+      (a) => a.id !== attachmentId,
+    );
+    this.researchStore.set(sermonId, list);
+    this.researchPages.delete(this.researchKey(sermonId, attachmentId));
+  }
+
+  async openResearchFile(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<OpenResearchFileResult> {
+    await delay(60);
+    const att = this.requireResearchAttachment(sermonId, attachmentId);
+    return { absolutePath: att.importProvenance.importedFrom };
   }
 }

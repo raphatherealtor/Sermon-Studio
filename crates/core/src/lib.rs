@@ -46,6 +46,7 @@ pub mod provenance;
 pub mod reconcile;
 pub mod reference;
 pub mod research_packet;
+pub mod research_store;
 pub mod retrieval;
 pub mod schema;
 pub mod sermon;

@@ -54,3 +54,26 @@ export interface ResearchPacketManifest {
   sermonId: string;
   attachments: ResearchAttachment[];
 }
+
+/** Request to import a local PDF into a sermon's research packet. */
+export interface AttachResearchFileRequest {
+  sermonId: string;
+  /** Absolute path of the user-selected local file (Tauri backend). */
+  sourcePath: string;
+  title?: string;
+  author?: string;
+  source?: string;
+}
+
+/** User-editable metadata patch. */
+export interface UpdateResearchMetadataRequest {
+  title?: string;
+  author?: string;
+  source?: string;
+  userNotes?: string;
+}
+
+/** Result of an open request: the validated absolute path of the stored PDF. */
+export interface OpenResearchFileResult {
+  absolutePath: string;
+}

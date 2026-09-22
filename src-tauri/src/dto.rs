@@ -890,3 +890,107 @@ mod tests {
         assert!(d.iter().all(|x| x.kind == "context"));
     }
 }
+
+// ── Research Packet DTOs (V1) ────────────────────────────────────────────────
+// Wire mirror of `sermon_core::research_packet` / `sermon_core::research_store`.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProvenanceDto {
+    pub imported_from: String,
+    pub imported_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchAttachmentDto {
+    pub id: String,
+    pub original_filename: String,
+    pub stored_filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub date_added: String,
+    pub mime_type: String,
+    pub byte_size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_count: Option<u32>,
+    pub checksum: String,
+    pub extraction: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_notes: Option<String>,
+    pub import_provenance: ImportProvenanceDto,
+    pub provenance_class: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractedPageDto {
+    pub page: u32,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachResearchFileRequestDto {
+    pub sermon_id: String,
+    pub source_path: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResearchMetadataRequestDto {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub user_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenResearchFileResultDto {
+    pub absolute_path: String,
+}
+
+pub fn attachment_to_dto(a: &sermon_core::research_packet::ResearchAttachment) -> ResearchAttachmentDto {
+    use sermon_core::research_packet::ExtractionStatus;
+    ResearchAttachmentDto {
+        id: a.id.clone(),
+        original_filename: a.original_filename.clone(),
+        stored_filename: a.stored_filename.clone(),
+        title: a.title.clone(),
+        author: a.author.clone(),
+        source: a.source.clone(),
+        date_added: a.date_added.clone(),
+        mime_type: a.mime_type.clone(),
+        byte_size: a.byte_size,
+        page_count: a.page_count,
+        checksum: a.checksum.clone(),
+        extraction: match a.extraction {
+            ExtractionStatus::Ok => "ok",
+            ExtractionStatus::NoText => "no-text",
+            ExtractionStatus::Failed => "failed",
+            ExtractionStatus::NotAttempted => "not-attempted",
+        }
+        .to_string(),
+        user_notes: a.user_notes.clone(),
+        import_provenance: ImportProvenanceDto {
+            imported_from: a.import_provenance.imported_from.clone(),
+            imported_at: a.import_provenance.imported_at.clone(),
+        },
+        provenance_class: a.provenance_class.as_wire().to_string(),
+    }
+}

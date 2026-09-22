@@ -2173,3 +2173,112 @@ mod tests {
         assert!(res.message.contains("no copy"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Research packets (thin bridges to sermon_core::research_store)
+// ---------------------------------------------------------------------------
+
+use sermon_core::research_store::{self, AttachmentMetadata, ImportRequest};
+
+fn store_err(e: research_store::StoreError) -> String {
+    e.to_string()
+}
+
+pub fn attach_research_file(
+    vault: &Path,
+    req: &dto::AttachResearchFileRequestDto,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    let att = research_store::import_attachment(
+        vault,
+        &req.sermon_id,
+        &ImportRequest {
+            source_path: PathBuf::from(&req.source_path),
+            metadata: AttachmentMetadata {
+                title: req.title.clone(),
+                author: req.author.clone(),
+                source: req.source.clone(),
+                user_notes: None,
+            },
+        },
+    )
+    .map_err(store_err)?;
+    Ok(dto::attachment_to_dto(&att))
+}
+
+pub fn list_research_attachments(
+    vault: &Path,
+    sermon_id: &str,
+) -> ApiResult<Vec<dto::ResearchAttachmentDto>> {
+    research_store::list_attachments(vault, sermon_id)
+        .map_err(store_err)
+        .map(|list| list.iter().map(dto::attachment_to_dto).collect())
+}
+
+pub fn get_research_attachment(
+    vault: &Path,
+    sermon_id: &str,
+    attachment_id: &str,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    research_store::get_attachment(vault, sermon_id, attachment_id)
+        .map_err(store_err)
+        .map(|a| dto::attachment_to_dto(&a))
+}
+
+pub fn get_extracted_pages(
+    vault: &Path,
+    sermon_id: &str,
+    attachment_id: &str,
+) -> ApiResult<Vec<dto::ExtractedPageDto>> {
+    research_store::get_extracted_pages(vault, sermon_id, attachment_id)
+        .map_err(store_err)
+        .map(|pages| {
+            pages
+                .iter()
+                .map(|p| dto::ExtractedPageDto {
+                    page: p.page,
+                    text: p.text.clone(),
+                })
+                .collect()
+        })
+}
+
+pub fn update_research_metadata(
+    vault: &Path,
+    sermon_id: &str,
+    attachment_id: &str,
+    req: &dto::UpdateResearchMetadataRequestDto,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    research_store::update_metadata(
+        vault,
+        sermon_id,
+        attachment_id,
+        &AttachmentMetadata {
+            title: req.title.clone(),
+            author: req.author.clone(),
+            source: req.source.clone(),
+            user_notes: req.user_notes.clone(),
+        },
+    )
+    .map_err(store_err)
+    .map(|a| dto::attachment_to_dto(&a))
+}
+
+pub fn remove_research_attachment(
+    vault: &Path,
+    sermon_id: &str,
+    attachment_id: &str,
+) -> ApiResult<()> {
+    research_store::remove_attachment(vault, sermon_id, attachment_id).map_err(store_err)
+}
+
+pub fn open_research_file(
+    vault: &Path,
+    sermon_id: &str,
+    attachment_id: &str,
+) -> ApiResult<dto::OpenResearchFileResultDto> {
+    research_store::stored_file_path(vault, sermon_id, attachment_id)
+        .map_err(store_err)
+        .map(|p| dto::OpenResearchFileResultDto {
+            absolute_path: p.to_string_lossy().to_string(),
+        })
+}
