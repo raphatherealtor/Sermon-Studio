@@ -489,7 +489,7 @@ Come to him. Keep coming. And you shall not hunger.`,
   sourcePath: '/home/preacher/sermons/gospel-of-john/bread-of-life.md',
   fsState: 'local-dirty',
   exportHistory: [
-    { snapshotId: 'snap-001-v12', format: 'pdf', exportedAt: '2026-09-15T10:30:00Z', outputPath: '/home/preacher/sermons/exports/bread-of-life-v12.pdf', success: true },
+    { snapshotId: 'snap-001-v12', format: 'pulpit_manuscript', exportedAt: '2026-09-15T10:30:00Z', outputPath: '/home/preacher/sermons/exports/bread-of-life-v12.pdf', success: true },
   ],
 };
 

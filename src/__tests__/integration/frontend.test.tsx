@@ -121,9 +121,6 @@ function createStubBackend(overrides: Partial<SermonBackend> = {}): SermonBacken
     loadSettings: jest.fn().mockResolvedValue({ libraryPath: '/home/preacher/sermons', theme: 'dark', editorFontSize: 16, autosaveIntervalSeconds: 30, exportDefaults: { format: 'pulpit_manuscript', pageSize: 'letter', includeTitle: true, includeScripture: true, includeNotes: false, includeIllustrations: true } }),
     saveSettings: jest.fn().mockResolvedValue(undefined),
     testDirectiveCodec: jest.fn().mockResolvedValue({ pass: true, input: '', parsed: [], serialized: '' }),
-    getSermonInsights: jest.fn().mockResolvedValue({ engineVersion: 'test', generatedAt: '2026-01-01T00:00:00Z', biblicalDataAvailable: true, insights: [] }),
-    getRelatedSermons: jest.fn().mockResolvedValue({ engineVersion: 'test', generatedAt: '2026-01-01T00:00:00Z', biblicalDataAvailable: true, insights: [] }),
-    getPassageHistory: jest.fn().mockResolvedValue({ engineVersion: 'test', generatedAt: '2026-01-01T00:00:00Z', biblicalDataAvailable: true, insights: [] }),
   };
   return { ...base, ...overrides };
 }

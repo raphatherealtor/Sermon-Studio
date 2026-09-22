@@ -24,7 +24,9 @@ beforeEach(() => {
   mockInvoke.mockResolvedValue(undefined);
   // Simulate the native Tauri webview so the adapter reaches the (mocked)
   // invoke bridge instead of short-circuiting as "unavailable".
-  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+    invoke: mockInvoke,
+  };
 });
 
 afterEach(() => {
