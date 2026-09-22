@@ -133,6 +133,12 @@ fn index_into(conn: &mut Connection, vault: &Path, incremental: bool) -> Result<
         if is_hidden_rel(&rel) {
             continue;
         }
+        // Constitutional guard (Track O): research-packet content is never
+        // pastor-authored index material, even if a `.md` ever lands inside
+        // `.sermon-studio/attachments/`. Component-aware, Windows-safe.
+        if !crate::research_packet::is_indexable_as_pastor_content(Path::new(&rel)) {
+            continue;
+        }
         stats.scanned += 1;
         seen_paths.insert(rel.clone());
 

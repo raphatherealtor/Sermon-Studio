@@ -34,7 +34,16 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
-  IntelligenceResult, ChainStudyResult } from './types';
+  IntelligenceResult,
+  ChainStudyResult,
+} from './types';
+import type {
+  AttachResearchFileRequest,
+  ExtractedPage,
+  OpenResearchFileResult,
+  ResearchAttachment,
+  UpdateResearchMetadataRequest,
+} from './contracts/research_packet';
 
 export interface SermonBackend {
   // ── Sermon list / archive ──────────────────────────────────────────────────
@@ -97,4 +106,28 @@ export interface SermonBackend {
 
   // ── Developer / codec test ────────────────────────────────────────────────
   testDirectiveCodec(input: string): Promise<CodecRoundTripResult>;
+
+  // ── Research packets (V1) ─────────────────────────────────────────────────
+  attachResearchFile(
+    request: AttachResearchFileRequest,
+  ): Promise<ResearchAttachment>;
+  listResearchAttachments(sermonId: string): Promise<ResearchAttachment[]>;
+  getResearchAttachment(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ResearchAttachment>;
+  getExtractedPages(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ExtractedPage[]>;
+  updateResearchMetadata(
+    sermonId: string,
+    attachmentId: string,
+    patch: UpdateResearchMetadataRequest,
+  ): Promise<ResearchAttachment>;
+  removeResearchAttachment(sermonId: string, attachmentId: string): Promise<void>;
+  openResearchFile(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<OpenResearchFileResult>;
 }

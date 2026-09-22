@@ -27,6 +27,8 @@ typst.workspace = true
 typst-layout.workspace = true
 typst-pdf.workspace = true
 typst-assets.workspace = true
+pdf-extract = "0.7"
 
 [dev-dependencies]
+lopdf = "0.34"
 tempfile = "3"

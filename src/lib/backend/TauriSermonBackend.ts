@@ -44,7 +44,16 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
-  IntelligenceResult, ChainStudyResult } from './types';
+  IntelligenceResult,
+  ChainStudyResult,
+} from './types';
+import type {
+  AttachResearchFileRequest,
+  ExtractedPage,
+  OpenResearchFileResult,
+  ResearchAttachment,
+  UpdateResearchMetadataRequest,
+} from './contracts/research_packet';
 import { isTauriRuntime } from './runtime';
 
 // Dynamic import isolates Tauri dependency from the browser bundle.
@@ -236,5 +245,44 @@ export class TauriSermonBackend implements SermonBackend {
   }
   async testDirectiveCodec(input: string): Promise<CodecRoundTripResult> {
     return tauriInvoke('test_directive_codec', { input });
+  }
+  async attachResearchFile(
+    request: AttachResearchFileRequest,
+  ): Promise<ResearchAttachment> {
+    return tauriInvoke('attach_research_file', { request });
+  }
+  async listResearchAttachments(sermonId: string): Promise<ResearchAttachment[]> {
+    return tauriInvoke('list_research_attachments', { sermonId });
+  }
+  async getResearchAttachment(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ResearchAttachment> {
+    return tauriInvoke('get_research_attachment', { sermonId, attachmentId });
+  }
+  async getExtractedPages(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<ExtractedPage[]> {
+    return tauriInvoke('get_extracted_pages', { sermonId, attachmentId });
+  }
+  async updateResearchMetadata(
+    sermonId: string,
+    attachmentId: string,
+    patch: UpdateResearchMetadataRequest,
+  ): Promise<ResearchAttachment> {
+    return tauriInvoke('update_research_metadata', { sermonId, attachmentId, request: patch });
+  }
+  async removeResearchAttachment(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<void> {
+    return tauriInvoke('remove_research_attachment', { sermonId, attachmentId });
+  }
+  async openResearchFile(
+    sermonId: string,
+    attachmentId: string,
+  ): Promise<OpenResearchFileResult> {
+    return tauriInvoke('open_research_file', { sermonId, attachmentId });
   }
 }

@@ -140,6 +140,13 @@ pub fn run() {
             commands::load_settings,
             commands::save_settings,
             commands::test_directive_codec,
+            commands::attach_research_file,
+            commands::list_research_attachments,
+            commands::get_research_attachment,
+            commands::get_extracted_pages,
+            commands::update_research_metadata,
+            commands::remove_research_attachment,
+            commands::open_research_file,
             // ── Retained V1 surface ────────────────────────────────────────
             commands::get_config,
             commands::set_config,

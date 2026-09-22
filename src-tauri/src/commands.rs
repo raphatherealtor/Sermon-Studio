@@ -61,6 +61,13 @@ pub const COMMAND_NAMES: &[&str] = &[
     "get_filesystem_status",
     "recover_sermon",
     "reconnect_sermon",
+    "attach_research_file",
+    "list_research_attachments",
+    "get_research_attachment",
+    "get_extracted_pages",
+    "update_research_metadata",
+    "remove_research_attachment",
+    "open_research_file",
     "load_settings",
     "save_settings",
     "test_directive_codec",
@@ -488,6 +495,89 @@ pub fn reveal_exported_file(
 }
 
 // ---------------------------------------------------------------------------
+// Research packets (A) — thin bridges to sermon_core::research_store.
+// The store owns validation, confinement, content-addressing, extraction,
+// and atomic manifest updates; these commands only resolve the vault path.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn attach_research_file(
+    state: State<AppState>,
+    request: dto::AttachResearchFileRequestDto,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::attach_research_file(&PathBuf::from(&cfg.vault_path), &request)
+}
+
+#[tauri::command]
+pub fn list_research_attachments(
+    state: State<AppState>,
+    sermon_id: String,
+) -> ApiResult<Vec<dto::ResearchAttachmentDto>> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::list_research_attachments(&PathBuf::from(&cfg.vault_path), &sermon_id)
+}
+
+#[tauri::command]
+pub fn get_research_attachment(
+    state: State<AppState>,
+    sermon_id: String,
+    attachment_id: String,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::get_research_attachment(&PathBuf::from(&cfg.vault_path), &sermon_id, &attachment_id)
+}
+
+#[tauri::command]
+pub fn get_extracted_pages(
+    state: State<AppState>,
+    sermon_id: String,
+    attachment_id: String,
+) -> ApiResult<Vec<dto::ExtractedPageDto>> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::get_extracted_pages(&PathBuf::from(&cfg.vault_path), &sermon_id, &attachment_id)
+}
+
+#[tauri::command]
+pub fn update_research_metadata(
+    state: State<AppState>,
+    sermon_id: String,
+    attachment_id: String,
+    request: dto::UpdateResearchMetadataRequestDto,
+) -> ApiResult<dto::ResearchAttachmentDto> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::update_research_metadata(
+        &PathBuf::from(&cfg.vault_path),
+        &sermon_id,
+        &attachment_id,
+        &request,
+    )
+}
+
+#[tauri::command]
+pub fn remove_research_attachment(
+    state: State<AppState>,
+    sermon_id: String,
+    attachment_id: String,
+) -> ApiResult<()> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::remove_research_attachment(&PathBuf::from(&cfg.vault_path), &sermon_id, &attachment_id)
+}
+
+/// Open the stored original PDF. V1 returns the confinement-validated
+/// absolute path; actual shell opening needs an opener integration that is
+/// intentionally not part of this track (mirrors `reveal_exported_file`).
+#[tauri::command]
+pub fn open_research_file(
+    state: State<AppState>,
+    sermon_id: String,
+    attachment_id: String,
+) -> ApiResult<dto::OpenResearchFileResultDto> {
+    let cfg = state.config.lock().unwrap().clone();
+    core_api::open_research_file(&PathBuf::from(&cfg.vault_path), &sermon_id, &attachment_id)
+}
+
+// ---------------------------------------------------------------------------
 // Conflict / filesystem reconciliation (B)
 // ---------------------------------------------------------------------------
 
@@ -863,7 +953,7 @@ mod tests {
             .expect("read build.rs");
         assert_eq!(
             COMMAND_NAMES.len(),
-            52,
+            59,
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {
