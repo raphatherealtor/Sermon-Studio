@@ -44,6 +44,7 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
+  IntelligenceResult,
 } from './types';
 import { isTauriRuntime } from './runtime';
 
@@ -182,6 +183,15 @@ export class TauriSermonBackend implements SermonBackend {
   }
   async getIllustrationFatigue(): Promise<IllustrationFatigueResult[]> {
     return tauriInvoke('get_illustration_fatigue');
+  }
+  async getRelatedSermons(sermonId: string, limit = 10): Promise<IntelligenceResult> {
+    return tauriInvoke('get_related_sermons', { sermonId, limit });
+  }
+  async getPassageHistory(reference: string): Promise<IntelligenceResult> {
+    return tauriInvoke('get_passage_history', { reference });
+  }
+  async getSermonInsights(sermonId: string, limit = 10): Promise<IntelligenceResult> {
+    return tauriInvoke('get_sermon_insights', { sermonId, limit });
   }
   async setLibrarianEnabled(enabled: boolean): Promise<void> {
     return tauriInvoke('set_librarian_enabled', { enabled });

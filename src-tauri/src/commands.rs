@@ -46,6 +46,9 @@ pub const COMMAND_NAMES: &[&str] = &[
     "get_index_status",
     "get_archive_stats",
     "get_illustration_fatigue",
+    "get_related_sermons",
+    "get_passage_history",
+    "get_sermon_insights",
     "set_librarian_enabled",
     "create_export_snapshot",
     "execute_export_job",
@@ -91,6 +94,24 @@ pub fn search_sermons(
 ) -> ApiResult<Vec<dto::SearchResultDto>> {
     let conn = state.pastor().map_err(|e| e.to_string())?;
     core_api::search_sermons(&conn, &query, &filters.unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn get_related_sermons(state: State<AppState>, sermon_id: String, limit: Option<usize>) -> ApiResult<sermon_core::intelligence::IntelligenceResult> {
+    let conn = state.pastor().map_err(|e| e.to_string())?;
+    sermon_core::intelligence::related_sermons(&conn, &sermon_id, limit.unwrap_or(10)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_passage_history(state: State<AppState>, reference: String) -> ApiResult<sermon_core::intelligence::IntelligenceResult> {
+    let conn = state.pastor().map_err(|e| e.to_string())?;
+    sermon_core::intelligence::passage_history(&conn, &reference).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_sermon_insights(state: State<AppState>, sermon_id: String, limit: Option<usize>) -> ApiResult<sermon_core::intelligence::IntelligenceResult> {
+    let conn = state.pastor().map_err(|e| e.to_string())?;
+    sermon_core::intelligence::sermon_insights(&conn, &sermon_id, limit.unwrap_or(10)).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -809,7 +830,7 @@ mod tests {
             .expect("read build.rs");
         assert_eq!(
             COMMAND_NAMES.len(),
-            48,
+            51,
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {

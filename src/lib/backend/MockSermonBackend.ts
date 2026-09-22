@@ -34,6 +34,7 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
+  IntelligenceResult,
 } from './types';
 // Fix 5: Import the shared frontend codec — MockSermonBackend provides fixtures only,
 // not the codec implementation.
@@ -954,6 +955,18 @@ export class MockSermonBackend implements SermonBackend {
     await delay(100);
     this.librarianEnabled = enabled;
     this.settings.librarianEnabled = enabled;
+  }
+
+  async getRelatedSermons(sermonId: string, limit = 10): Promise<IntelligenceResult> {
+    await delay(100);
+    return { engineVersion: 'sermon-intelligence-1.0', generatedAt: '2026-09-22T00:00:00Z', subjectSermonId: sermonId, insights: [] };
+  }
+  async getPassageHistory(reference: string): Promise<IntelligenceResult> {
+    await delay(100);
+    return { engineVersion: 'sermon-intelligence-1.0', generatedAt: '2026-09-22T00:00:00Z', subjectReference: reference, insights: [] };
+  }
+  async getSermonInsights(sermonId: string, limit = 10): Promise<IntelligenceResult> {
+    return this.getRelatedSermons(sermonId, limit);
   }
 
   // ── Export ────────────────────────────────────────────────────────────────

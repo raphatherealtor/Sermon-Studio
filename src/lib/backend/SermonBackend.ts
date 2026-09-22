@@ -34,6 +34,7 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
+  IntelligenceResult,
 } from './types';
 
 export interface SermonBackend {
@@ -68,6 +69,9 @@ export interface SermonBackend {
   getIndexStatus(): Promise<IndexStatus>;
   getArchiveStats(): Promise<ArchiveStats>;
   getIllustrationFatigue(): Promise<IllustrationFatigueResult[]>;
+  getRelatedSermons(sermonId: string, limit?: number): Promise<IntelligenceResult>;
+  getPassageHistory(reference: string): Promise<IntelligenceResult>;
+  getSermonInsights(sermonId: string, limit?: number): Promise<IntelligenceResult>;
 
   // ── Librarian ─────────────────────────────────────────────────────────────
   setLibrarianEnabled(enabled: boolean): Promise<void>;

@@ -457,3 +457,8 @@ export interface CreateExportSnapshotRequest {
 export interface RevealFileRequest {
   path: string;
 }
+
+export type IntelligenceKind = 'related-sermon' | 'passage-history' | 'reference-overlap' | 'big-idea-overlap' | 'series-overlap' | 'illustration-pattern' | 'structure-overlap';
+export interface IntelligenceEvidence { kind: string; label: string; value: string; weight: number; sermonIds: string[]; references: string[]; }
+export interface IntelligenceInsight { id: string; kind: IntelligenceKind; title: string; summary: string; score: number; evidence: IntelligenceEvidence[]; relatedSermonIds: string[]; }
+export interface IntelligenceResult { engineVersion: string; generatedAt: string; subjectSermonId?: string; subjectReference?: string; insights: IntelligenceInsight[]; }
