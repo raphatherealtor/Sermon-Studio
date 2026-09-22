@@ -953,7 +953,7 @@ mod tests {
             .expect("read build.rs");
         assert_eq!(
             COMMAND_NAMES.len(),
-            59,
+            60,
             "COMMAND_NAMES changed; update build.rs APP_COMMANDS too"
         );
         for name in COMMAND_NAMES {
