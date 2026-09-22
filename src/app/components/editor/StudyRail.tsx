@@ -2,18 +2,20 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
-import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb,  } from 'lucide-react';
+import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, GitBranch,  } from 'lucide-react';
 import type {
   PassageResult, StrongsEntry, CrossReference, PreachedResult, IllustrationFatigueResult,
 } from '@/lib/backend/types';
 import InsightsPanel from './InsightsPanel';
+import ChainStudyPanel from './ChainStudyPanel';
 
-type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights';
+type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights' | 'chain';
 
 const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title: string }[] = [
   { id: 'passage', label: 'Passage', icon: Book, title: 'Scripture Passage' },
   { id: 'strongs', label: "Strong's", icon: Hash, title: "Strong's Lexicon" },
   { id: 'xref', label: 'X-Ref', icon: Link2, title: 'Cross References' },
+  { id: 'chain', label: 'Chain', icon: GitBranch, title: 'Chain Study' },
   { id: 'history', label: 'History', icon: Clock, title: 'Preached On' },
   { id: 'fatigue', label: 'Fatigue', icon: BarChart2, title: 'Illustration Fatigue' },
   { id: 'insights', label: 'Insights', icon: Lightbulb, title: 'Sermon Intelligence' },
@@ -78,6 +80,8 @@ export default function StudyRail() {
   const [preached, setPreached] = useState<PreachedResult[]>([]);
   const [preachedLoading, setPreachedLoading] = useState(false);
   const [preachedError, setPreachedError] = useState<string | null>(null);
+
+  const [chainRunKey, setChainRunKey] = useState(0);
 
   const [fatigue, setFatigue] = useState<IllustrationFatigueResult[]>([]);
   const [fatigueLoading, setFatigueLoading] = useState(false);
@@ -177,6 +181,7 @@ export default function StudyRail() {
     if (activeTab === 'passage') lookupPassage();
     else if (activeTab === 'xref') lookupXrefs();
     else if (activeTab === 'history') lookupHistory();
+    else if (activeTab === 'chain') setChainRunKey((k) => k + 1);
     else lookupPassage();
   };
 
@@ -199,7 +204,7 @@ export default function StudyRail() {
       </div>
 
       {/* Reference input (shared for passage/xref/history) */}
-      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && (
+      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && activeTab !== 'chain' && (
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
           <div className="flex gap-1.5">
             <input
@@ -572,6 +577,15 @@ export default function StudyRail() {
 
         {/* ── Sermon Intelligence tab (Track L presentation) ── */}
         {activeTab === 'insights' && <InsightsPanel />}
+
+        {/* ── Chain Study tab (Wave 5 / Track N presentation) ── */}
+        {activeTab === 'chain' && (
+          <ChainStudyPanel
+            key={`${referenceInput}-${chainRunKey}`}
+            referenceInput={referenceInput}
+            onOpenReference={(ref) => { setReferenceInput(ref); lookupPassage(ref); setActiveTab('passage'); }}
+          />
+        )}
       </div>
     </div>
   );

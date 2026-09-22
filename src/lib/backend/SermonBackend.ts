@@ -34,8 +34,7 @@ import type {
   RevealFileRequest,
   AppSettings,
   CodecRoundTripResult,
-  IntelligenceResult,
-} from './types';
+  IntelligenceResult, ChainStudyResult } from './types';
 
 export interface SermonBackend {
   // ── Sermon list / archive ──────────────────────────────────────────────────
@@ -59,6 +58,8 @@ export interface SermonBackend {
   getStrongs(id: string): Promise<StrongsEntry>;
   getCrossReferences(reference: string): Promise<CrossReference[]>;
   getPreachedOn(reference: string): Promise<PreachedResult[]>;
+  /** Chain Study (Wave 5 / Track N). Calm unavailable state via canonAvailable=false. */
+  getChainStudy(reference: string): Promise<ChainStudyResult>;
 
   // ── Index / archive stats ─────────────────────────────────────────────────
   syncIndex(): Promise<IndexOperationResult>;

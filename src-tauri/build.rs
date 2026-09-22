@@ -20,6 +20,7 @@ const APP_COMMANDS: &[&str] = &[
     "get_strongs",
     "get_cross_references",
     "get_preached_on",
+    "get_chain_study",
     "sync_index",
     "rebuild_index",
     "rescan_library",
