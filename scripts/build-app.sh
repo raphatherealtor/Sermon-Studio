@@ -20,10 +20,10 @@ if [[ "${1:-}" == "--debug" ]]; then
 fi
 
 echo "==> Installing frontend dependencies"
-( cd ui && npm ci || npm install )
+npm ci || npm install
 
-echo "==> Building frontend bundle"
-( cd ui && npm run build )
+echo "==> Building frontend bundle (Next.js static export -> out/)"
+npm run build
 
 echo "==> Building Tauri application ($PROFILE)"
 if [[ "$PROFILE" == "release" ]]; then

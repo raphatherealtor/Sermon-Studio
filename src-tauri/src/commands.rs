@@ -722,7 +722,7 @@ pub struct ConfigView {
 pub fn get_config(state: State<AppState>) -> ConfigView {
     let cfg = state.config.lock().unwrap().clone();
     ConfigView {
-        canon_present: cfg.resolve_canon_path().exists(),
+        canon_present: state.canon_path().exists(),
         vault_path: cfg.vault_path,
         canon_path: cfg.canon_path,
         pastor_path: cfg.pastor_path,

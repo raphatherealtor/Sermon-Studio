@@ -25,6 +25,10 @@ use std::sync::Mutex;
 pub struct AppState {
     pub config: Mutex<AppConfig>,
     pub config_path: PathBuf,
+    /// Tauri resource directory (where `bundle.resources` unpack). Resolved at
+    /// setup; on Linux this is `${APPDIR}/usr/lib/${exe}` (AppImage) or
+    /// `/usr/lib/${exe}` (.deb), which is NOT `${exe_dir}/resources`.
+    pub resource_dir: Mutex<Option<PathBuf>>,
     /// What the editor loaded/saved this session, keyed by sermon id — the
     /// local side of Track C's editor-vs-disk conflict evaluation.
     pub baselines: Mutex<SessionBaselines>,
@@ -44,10 +48,37 @@ impl AppState {
         Ok(sermon_core::indexer::open_pastor_db(&path)?)
     }
 
+    /// Resolve the effective canon.db location: configured data-dir path, then
+    /// next to the executable, then the Tauri resource directory (the correct
+    /// location on Linux, where `bundle.resources` unpack under `/usr/lib/${exe}`
+    /// or `${APPDIR}/usr/lib/${exe}` rather than `${exe_dir}/resources`).
+    pub fn canon_path(&self) -> PathBuf {
+        let cfg = self.config.lock().unwrap().clone();
+        let configured = PathBuf::from(&cfg.canon_path);
+        if configured.exists() {
+            return configured;
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                for candidate in [dir.join("canon.db"), dir.join("resources").join("canon.db")] {
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        if let Some(resource) = self.resource_dir.lock().unwrap().clone() {
+            let candidate = resource.join("canon.db");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        configured
+    }
+
     /// Open the static canon vault read-only (configured path or packaged resource).
     pub fn canon(&self) -> anyhow::Result<Connection> {
-        let cfg = self.config.lock().unwrap().clone();
-        let path = cfg.resolve_canon_path();
+        let path = self.canon_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -93,8 +124,16 @@ pub fn run() {
         .manage(AppState {
             config: Mutex::new(cfg),
             config_path,
+            resource_dir: Mutex::new(None),
             baselines: Mutex::new(SessionBaselines::default()),
             export_snapshots: Mutex::new(HashMap::new()),
+        })
+        .setup(|app| {
+            use tauri::Manager;
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                *app.state::<AppState>().resource_dir.lock().unwrap() = Some(resource_dir);
+            }
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             // ── Rocket contract surface (Track F) ──────────────────────────
