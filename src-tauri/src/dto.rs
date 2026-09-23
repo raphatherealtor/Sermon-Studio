@@ -687,6 +687,16 @@ pub struct ExportOptionsDto {
     pub output_filename: Option<String>,
     #[serde(default)]
     pub output_path: Option<String>,
+    // Teaching-notes layout options (Release Track R). Rejected when the
+    // requested format is not teaching_notes.
+    #[serde(default)]
+    pub include_big_idea: Option<bool>,
+    #[serde(default)]
+    pub spacing: Option<String>,
+    #[serde(default)]
+    pub teacher_headings: Option<bool>,
+    #[serde(default)]
+    pub include_discussion: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

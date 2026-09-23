@@ -1399,6 +1399,7 @@ fn core_export_request(request: &ExportRequestDto) -> ApiResult<export::ExportRe
     let format = match request.format.as_str() {
         "pulpit_manuscript" => export::ExportFormat::PulpitManuscript,
         "church_bulletin" => export::ExportFormat::ChurchBulletin,
+        "teaching_notes" => export::ExportFormat::TeachingNotes,
         other => return Err(format!("unsupported export format: {other}")),
     };
     let pulpit_mode = match request.manuscript_mode.as_deref() {
@@ -1408,10 +1409,45 @@ fn core_export_request(request: &ExportRequestDto) -> ApiResult<export::ExportRe
         ),
         None => None,
     };
+    // Teaching layout options: only meaningful (and only accepted) for the
+    // teaching_notes format — rejected rather than silently ignored elsewhere.
+    let teaching_options = match format {
+        export::ExportFormat::TeachingNotes => {
+            let mut opts = export::TeachingOptions::default();
+            if let Some(v) = request.options.include_big_idea {
+                opts.include_big_idea = v;
+            }
+            if let Some(s) = request.options.spacing.as_deref() {
+                opts.spacing = export::TeachingSpacing::parse(s)
+                    .ok_or_else(|| format!("unsupported teaching spacing: {s}"))?;
+            }
+            if let Some(v) = request.options.teacher_headings {
+                opts.teacher_headings = v;
+            }
+            if let Some(v) = request.options.include_discussion {
+                opts.include_discussion = v;
+            }
+            Some(opts)
+        }
+        _ => {
+            if request.options.include_big_idea.is_some()
+                || request.options.spacing.is_some()
+                || request.options.teacher_headings.is_some()
+                || request.options.include_discussion.is_some()
+            {
+                return Err(
+                    "teaching layout options are only valid for the teaching_notes format"
+                        .to_string(),
+                );
+            }
+            None
+        }
+    };
     Ok(export::ExportRequest {
         format,
         pulpit_mode,
         include_private_notes: request.options.include_notes.unwrap_or(false),
+        teaching_options,
     })
 }
 
@@ -1419,6 +1455,7 @@ fn export_format_name(format: export::ExportFormat) -> &'static str {
     match format {
         export::ExportFormat::PulpitManuscript => "pulpit_manuscript",
         export::ExportFormat::ChurchBulletin => "church_bulletin",
+        export::ExportFormat::TeachingNotes => "teaching_notes",
     }
 }
 
@@ -2122,6 +2159,7 @@ mod tests {
                 include_notes: Some(false),
                 output_filename: None,
                 output_path: Some(output.display().to_string()),
+                ..ExportOptionsDto::default()
             },
             snapshot_id: Some(snapshot.snapshot_id.clone()),
         };
@@ -2131,6 +2169,41 @@ mod tests {
         assert_eq!(result.format, "pulpit_manuscript");
         let pdf = std::fs::read(output).unwrap();
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn teaching_notes_export_flows_through_the_transport() {
+        let (_tmp, vault, db) = setup("teaching-bridge");
+        let (conn, _content) = seed(&vault, &db);
+        let snapshot = create_export_source_snapshot(&vault, &conn, "alpha").unwrap();
+        let output = vault.join("exports").join("alpha-teaching.pdf");
+        let request = ExportRequestDto {
+            sermon_id: "alpha".to_string(),
+            format: "teaching_notes".to_string(),
+            manuscript_mode: None,
+            options: ExportOptionsDto {
+                include_notes: Some(false),
+                output_filename: None,
+                output_path: Some(output.display().to_string()),
+                include_big_idea: Some(true),
+                spacing: Some("compact".to_string()),
+                teacher_headings: Some(true),
+                include_discussion: Some(false),
+            },
+            snapshot_id: Some(snapshot.snapshot_id.clone()),
+        };
+        let result = execute_export_snapshot(&vault, &snapshot, &request).unwrap();
+        assert!(result.success);
+        assert_eq!(result.format, "teaching_notes");
+        let pdf = std::fs::read(output).unwrap();
+        assert!(pdf.starts_with(b"%PDF-"));
+
+        // Teaching layout options on a non-teaching format are rejected, not ignored.
+        let bad = ExportRequestDto {
+            format: "church_bulletin".to_string(),
+            ..request.clone()
+        };
+        assert!(execute_export_snapshot(&vault, &snapshot, &bad).is_err());
     }
 
     #[test]
@@ -2147,6 +2220,7 @@ mod tests {
                 include_notes: Some(false),
                 output_filename: None,
                 output_path: Some(directory.display().to_string()),
+                ..ExportOptionsDto::default()
             },
             snapshot_id: Some(snapshot.snapshot_id.clone()),
         };
