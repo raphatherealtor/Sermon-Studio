@@ -18,6 +18,8 @@ BUNDLE="$ROOT/target/release/bundle"
 DEB="$(ls "$BUNDLE"/deb/*.deb | head -n1)"
 APPIMAGE="$(ls "$BUNDLE"/appimage/*.AppImage | head -n1)"
 EXE_NAME="sermon-studio"
+SMOKE_DIR="$(mktemp -d)"
+trap 'rm -rf "$SMOKE_DIR"' EXIT
 
 echo "==> Artifacts"
 echo "    deb      = $DEB"
@@ -54,14 +56,20 @@ echo "    AppImage canon.db sha  = $APP_SHA"
 echo "==> Building the headless CLI"
 cargo build --release --locked -p sermon
 
+# NOTE: capture full output to a file (never pipe through head/tail/grep -mN) —
+# the CLI prints multiple lines and an early-closed pipe triggers a broken-pipe
+# panic (SIGABRT) in `println!`.
 echo "==> Passage lookup (John 3:16)"
-"$ROOT/target/release/sermon" verse "John 3:16" --canon "$DEB_CANON" | head -n1
+"$ROOT/target/release/sermon" verse "John 3:16" --canon "$DEB_CANON" > "$SMOKE_DIR/verse-jn316.txt"
+grep -m1 "John 3:16" "$SMOKE_DIR/verse-jn316.txt"
 
 echo "==> Strong's lookup (G25)"
-"$ROOT/target/release/sermon" strong G25 --canon "$DEB_CANON" | head -n1
+"$ROOT/target/release/sermon" strong G25 --canon "$DEB_CANON" > "$SMOKE_DIR/strong-g25.txt"
+grep -m1 "G25" "$SMOKE_DIR/strong-g25.txt"
 
 echo "==> Cross-reference lookup (Gen 1:1)"
-"$ROOT/target/release/sermon" verse "Gen 1:1" --canon "$DEB_CANON" | tail -n +2 | head -n3
+"$ROOT/target/release/sermon" verse "Gen 1:1" --canon "$DEB_CANON" > "$SMOKE_DIR/verse-gen11.txt"
+grep -m1 "Genesis 1:1" "$SMOKE_DIR/verse-gen11.txt"
 
 # ── 4. install the .deb and launch headless ──────────────────────────────────
 echo "==> Installing the .deb"
@@ -70,7 +78,8 @@ INSTALLED_BIN=$(command -v "$EXE_NAME" || echo "/usr/bin/$EXE_NAME")
 echo "    installed binary = $INSTALLED_BIN"
 
 echo "==> Launching installed binary headless (xvfb)"
-xvfb-run -a -s "-screen 0 1280x820x24" "$INSTALLED_BIN" &
+WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+  xvfb-run -a -s "-screen 0 1280x820x24" "$INSTALLED_BIN" &
 PID=$!
 sleep 8
 if kill -0 "$PID" 2>/dev/null; then
@@ -82,7 +91,8 @@ fi
 
 # ── 5. launch the AppImage headless (no FUSE) ────────────────────────────────
 echo "==> Launching AppImage headless (extract-and-run, xvfb)"
-xvfb-run -a -s "-screen 0 1280x820x24" "$APPIMAGE" --appimage-extract-and-run &
+WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+  xvfb-run -a -s "-screen 0 1280x820x24" "$APPIMAGE" --appimage-extract-and-run &
 PID2=$!
 sleep 8
 if kill -0 "$PID2" 2>/dev/null; then
