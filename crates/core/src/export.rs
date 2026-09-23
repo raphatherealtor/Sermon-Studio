@@ -15,11 +15,14 @@
 //!   → ExportOutcome report for the integration/frontend layer
 //! ```
 //!
-//! Exactly two export formats exist:
+//! Exactly three export formats exist:
 //!
 //! * [`ExportFormat::PulpitManuscript`] with [`PulpitMode::Manuscript`],
 //!   [`PulpitMode::Outline`], or [`PulpitMode::Combined`].
 //! * [`ExportFormat::ChurchBulletin`] (congregation-facing outline).
+//! * [`ExportFormat::TeachingNotes`] (teacher-facing Bible study / teaching
+//!   notes compiled from the same canonical AST with
+//!   [`TeachingOptions`]).
 //!
 //! Determinism: templates are embedded at compile time, fonts come from the
 //! versioned `typst-assets` crate, templates never call `datetime.today()`
@@ -54,15 +57,20 @@ use typst_layout::PagedDocument;
 
 const PULPIT_TEMPLATE_SRC: &str = include_str!("../templates/pulpit_manuscript.typ");
 const BULLETIN_TEMPLATE_SRC: &str = include_str!("../templates/church_bulletin.typ");
+const TEACHING_TEMPLATE_SRC: &str = include_str!("../templates/teaching_notes.typ");
 
 /// Identifier of the pulpit manuscript template.
 pub const PULPIT_TEMPLATE_ID: &str = "pulpit_manuscript";
 /// Identifier of the church bulletin template.
 pub const BULLETIN_TEMPLATE_ID: &str = "church_bulletin";
+/// Identifier of the Bible study / teaching notes template.
+pub const TEACHING_TEMPLATE_ID: &str = "teaching_notes";
 /// Bump when the pulpit template's rendered output changes meaningfully.
 pub const PULPIT_TEMPLATE_VERSION: &str = "1.0.0";
 /// Bump when the bulletin template's rendered output changes meaningfully.
 pub const BULLETIN_TEMPLATE_VERSION: &str = "1.0.0";
+/// Bump when the teaching notes template's rendered output changes meaningfully.
+pub const TEACHING_TEMPLATE_VERSION: &str = "1.0.0";
 
 /// Schema version of [`ExportSnapshot`]. Bump on incompatible changes.
 pub const EXPORT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
@@ -71,12 +79,68 @@ pub const EXPORT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 // Request model
 // ---------------------------------------------------------------------------
 
-/// The exactly-two canonical export formats.
+/// The three canonical export formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportFormat {
     PulpitManuscript,
     ChurchBulletin,
+    TeachingNotes,
+}
+
+/// Spacing density for the teaching notes layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeachingSpacing {
+    /// Tighter leading for a compact handout.
+    Compact,
+    /// Roomier leading for annotation.
+    Comfortable,
+}
+
+impl TeachingSpacing {
+    pub fn parse(s: &str) -> Option<TeachingSpacing> {
+        match s {
+            "compact" => Some(TeachingSpacing::Compact),
+            "comfortable" => Some(TeachingSpacing::Comfortable),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeachingSpacing::Compact => "compact",
+            TeachingSpacing::Comfortable => "comfortable",
+        }
+    }
+}
+
+/// Restrained, teacher-facing options for [`ExportFormat::TeachingNotes`].
+/// Only meaningful for that format; the transport rejects these options on
+/// other formats rather than silently ignoring them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct TeachingOptions {
+    /// Include the Big Idea statement. Default: true.
+    pub include_big_idea: bool,
+    /// Spacing density. Default: comfortable.
+    pub spacing: TeachingSpacing,
+    /// Use teacher-friendly headings (Big Idea, Movements, Applications,
+    /// For Discussion). Default: true.
+    pub teacher_headings: bool,
+    /// Include `:::discussion` blocks as a For Discussion / Q&A section.
+    /// Default: false (private preparation stays private unless asked for).
+    pub include_discussion: bool,
+}
+
+impl Default for TeachingOptions {
+    fn default() -> Self {
+        TeachingOptions {
+            include_big_idea: true,
+            spacing: TeachingSpacing::Comfortable,
+            teacher_headings: true,
+            include_discussion: false,
+        }
+    }
 }
 
 /// Pulpit manuscript rendering mode.
@@ -115,11 +179,16 @@ impl PulpitMode {
 pub struct ExportRequest {
     pub format: ExportFormat,
     /// Required for [`ExportFormat::PulpitManuscript`]; must be `None` for
-    /// the bulletin (ambiguous requests are rejected, not guessed).
+    /// the bulletin and teaching notes (ambiguous requests are rejected, not
+    /// guessed).
     pub pulpit_mode: Option<PulpitMode>,
     /// Include private `exegetical-notes` blocks. Only ever valid for the
-    /// pulpit manuscript; the bulletin is structurally public.
+    /// pulpit manuscript and teaching notes; the bulletin is structurally
+    /// public.
     pub include_private_notes: bool,
+    /// Teaching-notes layout options. Must be `None` for every other format
+    /// (rejected, not guessed).
+    pub teaching_options: Option<TeachingOptions>,
 }
 
 impl ExportRequest {
@@ -128,6 +197,7 @@ impl ExportRequest {
             format: ExportFormat::PulpitManuscript,
             pulpit_mode: Some(mode),
             include_private_notes: false,
+            teaching_options: None,
         }
     }
 
@@ -136,6 +206,16 @@ impl ExportRequest {
             format: ExportFormat::ChurchBulletin,
             pulpit_mode: None,
             include_private_notes: false,
+            teaching_options: None,
+        }
+    }
+
+    pub fn teaching(options: TeachingOptions) -> ExportRequest {
+        ExportRequest {
+            format: ExportFormat::TeachingNotes,
+            pulpit_mode: None,
+            include_private_notes: false,
+            teaching_options: Some(options),
         }
     }
 
@@ -146,6 +226,11 @@ impl ExportRequest {
                     return Err(ExportError::InvalidRequest(
                         "pulpit_manuscript export requires a mode (manuscript, outline, or combined)"
                             .to_string(),
+                    ));
+                }
+                if self.teaching_options.is_some() {
+                    return Err(ExportError::InvalidRequest(
+                        "teaching options are only valid for the teaching_notes format".to_string(),
                     ));
                 }
             }
@@ -160,6 +245,23 @@ impl ExportRequest {
                         "church_bulletin exports are congregation-facing; private exegetical \
                          notes can never be included"
                             .to_string(),
+                    ));
+                }
+                if self.teaching_options.is_some() {
+                    return Err(ExportError::InvalidRequest(
+                        "teaching options are only valid for the teaching_notes format".to_string(),
+                    ));
+                }
+            }
+            ExportFormat::TeachingNotes => {
+                if self.pulpit_mode.is_some() {
+                    return Err(ExportError::InvalidRequest(
+                        "teaching_notes export does not take a pulpit mode".to_string(),
+                    ));
+                }
+                if self.teaching_options.is_none() {
+                    return Err(ExportError::InvalidRequest(
+                        "teaching_notes export requires teaching options".to_string(),
                     ));
                 }
             }
@@ -228,8 +330,20 @@ enum TemplateBlock {
     },
     /// Private study notes — only ever constructed when explicitly requested.
     Notes { text: String },
+    /// Discussion / Q&A prompts (`:::discussion` blocks) — only ever
+    /// constructed for teaching notes when explicitly requested.
+    Discussion { text: String },
     /// Unknown directive, preserved verbatim (archival rendering).
     Unknown { name: String, raw: String },
+}
+
+/// Teaching-notes layout options as handed to the template.
+#[derive(Serialize)]
+struct TeachingTemplateData {
+    include_big_idea: bool,
+    spacing: &'static str,
+    teacher_headings: bool,
+    include_discussion: bool,
 }
 
 #[derive(Serialize)]
@@ -237,6 +351,8 @@ struct TemplateData {
     meta: TemplateMeta,
     mode: String,
     blocks: Vec<TemplateBlock>,
+    /// Present only for [`ExportFormat::TeachingNotes`]; `null` otherwise.
+    teaching: Option<TeachingTemplateData>,
 }
 
 /// Canonical sermon id, mirroring the v1 `SermonDoc::resolved_id` fallbacks:
@@ -262,13 +378,15 @@ fn build_template_data(
     request: &ExportRequest,
 ) -> TemplateData {
     let include_private = request.include_private_notes;
+    let teaching = request.teaching_options;
     let mode = match (request.format, request.pulpit_mode) {
         (ExportFormat::PulpitManuscript, Some(m)) => m.as_str().to_string(),
         (ExportFormat::ChurchBulletin, _) => "bulletin".to_string(),
+        (ExportFormat::TeachingNotes, _) => "teaching".to_string(),
         (ExportFormat::PulpitManuscript, None) => unreachable!("validated earlier"),
     };
 
-    let meta = TemplateMeta {
+    let mut meta = TemplateMeta {
         id: sermon_id.to_string(),
         title: sermon.meta.title.clone().unwrap_or_else(|| "(untitled)".to_string()),
         date: sermon.meta.date_preached.clone(),
@@ -283,6 +401,13 @@ fn build_template_data(
             .clone()
             .unwrap_or_else(|| "verse_by_verse".to_string()),
     };
+    // Big Idea inclusion is a teaching-notes option; every other format
+    // keeps the canonical frontmatter rendering untouched.
+    if let Some(opts) = teaching {
+        if !opts.include_big_idea {
+            meta.big_idea = None;
+        }
+    }
 
     let mut blocks = Vec::new();
     for block in &sermon.blocks {
@@ -325,10 +450,40 @@ fn build_template_data(
                 }
                 // Default: silently and completely omitted from public exports.
             }
-            Block::Unknown(d) => blocks.push(TemplateBlock::Unknown {
-                name: d.name.clone(),
-                raw: d.raw_source.clone(),
-            }),
+            Block::Unknown(d) => {
+                // Teaching notes may surface `:::discussion` blocks as a
+                // For Discussion / Q&A section when explicitly requested.
+                // The directive body is recovered deterministically: the
+                // lines between the opening and closing fences.
+                let is_discussion = matches!(
+                    d.name.as_str(),
+                    "discussion" | "qa" | "q-and-a"
+                );
+                if is_discussion
+                    && matches!(
+                        teaching,
+                        Some(TeachingOptions {
+                            include_discussion: true,
+                            ..
+                        })
+                    )
+                {
+                    let body_lines: Vec<&str> = d
+                        .raw_source
+                        .lines()
+                        .skip(1)
+                        .take(d.raw_source.lines().count().saturating_sub(2))
+                        .collect();
+                    blocks.push(TemplateBlock::Discussion {
+                        text: render_paragraphs(&body_lines.join("\n")),
+                    });
+                } else {
+                    blocks.push(TemplateBlock::Unknown {
+                        name: d.name.clone(),
+                        raw: d.raw_source.clone(),
+                    });
+                }
+            }
         }
     }
 
@@ -336,6 +491,12 @@ fn build_template_data(
         meta,
         mode,
         blocks,
+        teaching: teaching.map(|opts| TeachingTemplateData {
+            include_big_idea: opts.include_big_idea,
+            spacing: opts.spacing.as_str(),
+            teacher_headings: opts.teacher_headings,
+            include_discussion: opts.include_discussion,
+        }),
     }
 }
 
@@ -981,6 +1142,12 @@ pub fn export_sermon_with_id(
             "bulletin-doc",
             BULLETIN_TEMPLATE_SRC,
         ),
+        ExportFormat::TeachingNotes => (
+            TEACHING_TEMPLATE_ID,
+            TEACHING_TEMPLATE_VERSION,
+            "teaching-doc",
+            TEACHING_TEMPLATE_SRC,
+        ),
     };
 
     let main_source = compose_main_source(template_src, entry_fn);
@@ -1104,6 +1271,200 @@ mod tests {
         assert_valid_pdf(&std::fs::read(&out).unwrap());
     }
 
+    // ── Teaching notes (Release Track R) ─────────────────────────────────────
+
+    /// Teaching fixture: same block grammar as the canonical fixture plus a
+    /// `:::discussion` block (parsed as an unknown directive — the teaching
+    /// data builder surfaces it only when discussion inclusion is requested).
+    const TEACHING_FIXTURE: &str = "---\nid: teaching-sermon\ntitle: \"Abide in Christ\"\ndate_preached: 2025-03-09\nseries: \"Abide\"\nprimary_passage: \"John.15.1-8\"\nbig_idea: \"Abiding is the way to lasting fruit.\"\nstructure_type: verse_by_verse\n---\n\n# Abide in Christ\n\nOpening orientation for teachers.\n\n:::movement{order=1 title=\"The vine and the branches\" warrant=\"John 15:1-4\"}\nTeaching prose for the first movement.\n\n- Branch one\n- Branch two\n:::\n\n:::illustration{id=\"vineyard\" title=\"A working vineyard\"}\nIllustration body text.\n:::\n\n:::application{audience=\"small group\"}\nApplication body text.\n:::\n\n:::exegetical-notes\nTEACHING-PRIVATE-SENTINEL study notes for the teacher.\n:::\n\n:::discussion\n- Where do you see pruning in your own season of ministry?\n- What keeps a branch connected when the winds rise?\n:::\n\nClosing summary.\n";
+
+    fn teaching_export(
+        options: TeachingOptions,
+        include_private: bool,
+    ) -> (ExportOutcome, tempfile::TempDir, std::path::PathBuf) {
+        let sermon = Sermon::parse(TEACHING_FIXTURE).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("teaching.pdf");
+        let outcome = export_sermon(
+            &sermon,
+            TEACHING_FIXTURE,
+            ExportRequest {
+                include_private_notes: include_private,
+                ..ExportRequest::teaching(options)
+            },
+            &out,
+        );
+        (outcome, tmp, out)
+    }
+
+    #[test]
+    fn teaching_notes_export_valid_pdf_with_teaching_template() {
+        let (outcome, _tmp, out) = teaching_export(TeachingOptions::default(), false);
+        assert!(outcome.success, "export failed: {:?}", outcome.error);
+        let result = outcome.result.as_ref().unwrap();
+        assert_eq!(result.format, ExportFormat::TeachingNotes);
+        assert_eq!(result.template_id, TEACHING_TEMPLATE_ID);
+        assert_eq!(result.template_version, TEACHING_TEMPLATE_VERSION);
+        assert!(result.pulpit_mode.is_none());
+        assert_valid_pdf(&std::fs::read(&out).unwrap());
+    }
+
+    #[test]
+    fn teaching_notes_export_is_deterministic() {
+        let (a, _tmp_a, path_a) = teaching_export(TeachingOptions::default(), false);
+        let (b, _tmp_b, path_b) = teaching_export(TeachingOptions::default(), false);
+        assert!(a.success && b.success);
+        let sa = a.snapshot.unwrap();
+        let sb = b.snapshot.unwrap();
+        // Same source, options, template, and version ⇒ identical rendering
+        // inputs and identical content hash (distinct export ids aside).
+        assert_eq!(sa.content_hash(), sb.content_hash());
+        assert_eq!(sa.sermon_source_hash(), sb.sermon_source_hash());
+        assert_ne!(sa.export_id(), sb.export_id());
+        assert_eq!(
+            std::fs::read(&path_a).unwrap(),
+            std::fs::read(&path_b).unwrap()
+        );
+    }
+
+    #[test]
+    fn teaching_notes_export_preserves_canonical_source_hash() {
+        let (outcome, _tmp, _out) = teaching_export(TeachingOptions::default(), false);
+        let snapshot = outcome.snapshot.unwrap();
+        // The snapshot's source hash is the SHA-256 of the exact canonical
+        // Markdown handed in — the teaching target compiles the same source
+        // differently, it never creates a second document format.
+        assert_eq!(
+            snapshot.sermon_source_hash(),
+            crate::sermon::sha256_hex(TEACHING_FIXTURE.as_bytes())
+        );
+    }
+
+    #[test]
+    fn teaching_notes_private_notes_default_excluded_explicitly_included() {
+        // Default: the private sentinel never reaches the template data.
+        let (outcome, _tmp, _out) = teaching_export(TeachingOptions::default(), false);
+        let data = build_template_data(
+            &Sermon::parse(TEACHING_FIXTURE).unwrap(),
+            "teaching-sermon",
+            &ExportRequest::teaching(TeachingOptions::default()),
+        );
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("TEACHING-PRIVATE-SENTINEL"));
+        assert!(outcome.success);
+
+        // Explicitly requested: present, teacher-facing only.
+        let (_, _tmp, _out) = teaching_export(TeachingOptions::default(), true);
+        let data = build_template_data(
+            &Sermon::parse(TEACHING_FIXTURE).unwrap(),
+            "teaching-sermon",
+            &ExportRequest {
+                include_private_notes: true,
+                ..ExportRequest::teaching(TeachingOptions::default())
+            },
+        );
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("TEACHING-PRIVATE-SENTINEL"));
+    }
+
+    #[test]
+    fn teaching_notes_discussion_blocks_only_when_requested() {
+        let sermon = Sermon::parse(TEACHING_FIXTURE).unwrap();
+
+        // Default: the discussion block stays an archival unknown directive.
+        let data = build_template_data(
+            &sermon,
+            "teaching-sermon",
+            &ExportRequest::teaching(TeachingOptions::default()),
+        );
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("\"kind\":\"discussion\""));
+        assert!(json.contains("\"kind\":\"unknown\""));
+        assert!(json.contains(":::"));
+
+        // Requested: surfaced as a discussion block with the fences stripped.
+        let data = build_template_data(
+            &sermon,
+            "teaching-sermon",
+            &ExportRequest::teaching(TeachingOptions {
+                include_discussion: true,
+                ..TeachingOptions::default()
+            }),
+        );
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"kind\":\"discussion\""));
+        assert!(json.contains("pruning in your own season"));
+
+        // The pulpit manuscript never surfaces discussion blocks.
+        let data = build_template_data(&sermon, "teaching-sermon", &ExportRequest::pulpit(PulpitMode::Combined));
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("\"kind\":\"discussion\""));
+    }
+
+    #[test]
+    fn teaching_notes_options_change_the_snapshot_hash() {
+        let (a, _tmp_a, _out_a) = teaching_export(TeachingOptions::default(), false);
+        let (b, _tmp_b, _out_b) = teaching_export(
+            TeachingOptions {
+                spacing: TeachingSpacing::Compact,
+                ..TeachingOptions::default()
+            },
+            false,
+        );
+        assert!(a.success && b.success);
+        assert_ne!(
+            a.snapshot.unwrap().content_hash(),
+            b.snapshot.unwrap().content_hash()
+        );
+    }
+
+    #[test]
+    fn teaching_notes_big_idea_option_is_honored() {
+        let sermon = Sermon::parse(TEACHING_FIXTURE).unwrap();
+        let with = build_template_data(
+            &sermon,
+            "teaching-sermon",
+            &ExportRequest::teaching(TeachingOptions::default()),
+        );
+        assert!(serde_json::to_string(&with).unwrap().contains("Abiding is the way"));
+
+        let without = build_template_data(
+            &sermon,
+            "teaching-sermon",
+            &ExportRequest::teaching(TeachingOptions {
+                include_big_idea: false,
+                ..TeachingOptions::default()
+            }),
+        );
+        let json = serde_json::to_string(&without).unwrap();
+        assert!(!json.contains("Abiding is the way"));
+        // The other formats are untouched by the option.
+        let pulpit = build_template_data(&sermon, "teaching-sermon", &ExportRequest::pulpit(PulpitMode::Manuscript));
+        assert!(serde_json::to_string(&pulpit).unwrap().contains("Abiding is the way"));
+    }
+
+    #[test]
+    fn teaching_options_are_rejected_on_other_formats() {
+        let pulpit = ExportRequest {
+            teaching_options: Some(TeachingOptions::default()),
+            ..ExportRequest::pulpit(PulpitMode::Manuscript)
+        };
+        assert!(matches!(pulpit.validate(), Err(ExportError::InvalidRequest(_))));
+        let bulletin = ExportRequest {
+            teaching_options: Some(TeachingOptions::default()),
+            ..ExportRequest::bulletin()
+        };
+        assert!(matches!(bulletin.validate(), Err(ExportError::InvalidRequest(_))));
+        let teaching_with_mode = ExportRequest {
+            pulpit_mode: Some(PulpitMode::Manuscript),
+            ..ExportRequest::teaching(TeachingOptions::default())
+        };
+        assert!(matches!(
+            teaching_with_mode.validate(),
+            Err(ExportError::InvalidRequest(_))
+        ));
+    }
+
     #[test]
     fn private_exegetical_notes_are_excluded_by_default() {
         let sermon = parse_fixture();
@@ -1218,11 +1579,14 @@ mod tests {
     fn embedded_templates_have_identifiers_and_versions() {
         assert_eq!(PULPIT_TEMPLATE_ID, "pulpit_manuscript");
         assert_eq!(BULLETIN_TEMPLATE_ID, "church_bulletin");
+        assert_eq!(TEACHING_TEMPLATE_ID, "teaching_notes");
         assert!(PULPIT_TEMPLATE_SRC.contains("#let pulpit-doc"));
         assert!(BULLETIN_TEMPLATE_SRC.contains("#let bulletin-doc"));
+        assert!(TEACHING_TEMPLATE_SRC.contains("#let teaching-doc"));
         // Determinism guard: templates must never query the current date.
         assert!(!PULPIT_TEMPLATE_SRC.contains("today"));
         assert!(!BULLETIN_TEMPLATE_SRC.contains("today"));
+        assert!(!TEACHING_TEMPLATE_SRC.contains("today"));
     }
 
     #[test]
@@ -1282,6 +1646,7 @@ mod tests {
             format: ExportFormat::PulpitManuscript,
             pulpit_mode: None,
             include_private_notes: false,
+            teaching_options: None,
         };
         let outcome = export_to(&sermon, bad, &out);
         assert!(!outcome.success);
@@ -1292,6 +1657,7 @@ mod tests {
             format: ExportFormat::ChurchBulletin,
             pulpit_mode: Some(PulpitMode::Outline),
             include_private_notes: false,
+            teaching_options: None,
         };
         let outcome = export_to(&sermon, bad, &out);
         assert!(!outcome.success);

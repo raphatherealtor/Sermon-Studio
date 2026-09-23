@@ -427,8 +427,9 @@ export interface IllustrationFatigueResult {
 // Canonical export choices:
 //   pulpit_manuscript — modes: manuscript | outline | combined
 //   church_bulletin
+//   teaching_notes — Bible study / teaching handout from the same canonical AST
 
-export type ExportFormat = 'pulpit_manuscript' | 'church_bulletin';
+export type ExportFormat = 'pulpit_manuscript' | 'church_bulletin' | 'teaching_notes';
 
 export type PulpitManuscriptMode = 'manuscript' | 'outline' | 'combined';
 
@@ -459,6 +460,16 @@ export interface ExportOptions {
   outputPath?: string;
   template?: string;
   sermonMetadata?: Record<string, string>;
+  // Teaching-notes layout options (teaching_notes format only; the backend
+  // rejects them on other formats rather than ignoring them).
+  /** Include the Big Idea statement. Default true. */
+  includeBigIdea?: boolean;
+  /** Spacing density. Default 'comfortable'. */
+  spacing?: 'compact' | 'comfortable';
+  /** Teacher-friendly headings (Big Idea, Movements, Applications, For Discussion). Default true. */
+  teacherHeadings?: boolean;
+  /** Include `:::discussion` blocks as a For Discussion / Q&A section. Default false. */
+  includeDiscussion?: boolean;
 }
 
 export interface ExportResult {

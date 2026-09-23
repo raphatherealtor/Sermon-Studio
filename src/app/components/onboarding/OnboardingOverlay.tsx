@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, ChevronLeft, BookOpen } from 'lucide-react';
 import { dailyScripture } from '@/lib/onboarding/dailyScripture';
+import RkMark from '@/app/components/common/RkMark';
 
 const DEDICATION = [
   'In honor of forty years of ministry and preaching.',
@@ -71,6 +72,7 @@ export default function OnboardingOverlay({ onFinish }: OnboardingOverlayProps) 
         {isWelcome ? (
           <div className="space-y-6" data-testid="onboarding-welcome">
             <div className="space-y-2">
+              <RkMark withAttribution />
               <p className="text-2xs font-mono-data uppercase tracking-widest text-accent">
                 Sermon Studio
               </p>

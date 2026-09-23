@@ -5,6 +5,7 @@ import { Settings, Database, FileOutput, Type, RefreshCw, RotateCcw, CheckCircle
 import type { IndexOperationResult, IndexStatus, AppSettings } from '@/lib/backend/types';
 import Icon from '@/components/ui/AppIcon';
 import { requestTourReplay } from '@/lib/onboarding/firstRun';
+import RkMark from '@/app/components/common/RkMark';
 
 
 type SettingsSection = 'library' | 'index' | 'appearance' | 'editor' | 'export' | 'shortcuts' | 'developer' | 'about';
@@ -556,6 +557,7 @@ export default function SettingsContent() {
                   <p className="text-xs text-fg-dim">Built to preserve a lifetime of preaching.</p>
                 </div>
                 <div className="card-panel space-y-3">
+                  <RkMark withAttribution />
                   <p className="text-sm text-fg-dim leading-relaxed">
                     In honor of forty years of ministry and preaching. Sermon Studio was created
                     to preserve a lifetime of study, proclamation, and pastoral work — and to make

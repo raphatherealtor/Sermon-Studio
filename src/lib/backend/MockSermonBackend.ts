@@ -1172,6 +1172,7 @@ export class MockSermonBackend implements SermonBackend {
     const ext: Record<string, string> = {
       pulpit_manuscript: 'pdf',
       church_bulletin: 'pdf',
+      teaching_notes: 'pdf',
     };
     const outputPath = `${request.options.outputPath || '/home/preacher/sermons/exports'}/${filename}.${ext[request.format] || 'pdf'}`;
     const modeLabel = request.manuscriptMode ? ` (${request.manuscriptMode})` : '';

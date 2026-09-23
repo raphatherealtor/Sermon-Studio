@@ -6,7 +6,8 @@ import type {
   ExportFormat, PulpitManuscriptMode, ExportOptions, ExportResult, ExportSnapshot, SermonSummary,
 } from '@/lib/backend/types';
 
-// Fix 2: Canonical export choices reduced to pulpit_manuscript and church_bulletin only.
+// Fix 2: Canonical export choices — pulpit_manuscript, church_bulletin, and
+// (Release Track R) teaching_notes, all compiled from the same canonical AST.
 const FORMAT_OPTIONS: {
   id: ExportFormat;
   label: string;
@@ -15,6 +16,7 @@ const FORMAT_OPTIONS: {
 }[] = [
   { id: 'pulpit_manuscript', label: 'Pulpit Manuscript', description: 'Full manuscript, outline, or combined — for pulpit use', icon: FileText },
   { id: 'church_bulletin', label: 'Church Bulletin', description: 'Congregation bulletin insert with scripture and outline', icon: AlignJustify },
+  { id: 'teaching_notes', label: 'Teaching Notes', description: 'Bible study / teaching handout from the same sermon source', icon: BookOpen },
 ];
 
 const MANUSCRIPT_MODES: { id: PulpitManuscriptMode; label: string; description: string }[] = [
@@ -38,9 +40,14 @@ export default function ExportScreenContent() {
   // Typst templates fix page size, typography, and section layout; page-size/
   // font-size/preset controls would be silent no-ops and were removed
   // (Track I). `includeNotes` IS honored by the backend for the pulpit
-  // manuscript (private exegetical notes) and is structurally impossible for
-  // the church bulletin.
+  // manuscript and (Release Track R) the teaching notes, and is structurally
+  // impossible for the church bulletin.
   const [includeNotes, setIncludeNotes] = useState(false);
+  // Teaching-notes layout options (teaching_notes only).
+  const [includeBigIdea, setIncludeBigIdea] = useState(true);
+  const [teacherHeadings, setTeacherHeadings] = useState(true);
+  const [includeDiscussion, setIncludeDiscussion] = useState(false);
+  const [spacing, setSpacing] = useState<'compact' | 'comfortable'>('comfortable');
   const [outputFilename, setOutputFilename] = useState('');
   const [outputPath, setOutputPath] = useState('/home/preacher/sermons/exports');
 
@@ -102,11 +109,15 @@ export default function ExportScreenContent() {
     try {
       // Track I: send only the options the Rust backend actually honors
       // (output filename/path, and private-note inclusion for the pulpit
-      // manuscript). Unsupported options are never sent as fake choices.
+      // manuscript and teaching notes). Teaching layout options are only sent
+      // for the teaching_notes format — the backend rejects them elsewhere.
       const options: ExportOptions = {
         outputFilename: outputFilename || `${selectedSermon?.title?.toLowerCase().replace(/\s+/g, '-') || 'sermon'}`,
         outputPath,
-        ...(selectedFormat === 'pulpit_manuscript' ? { includeNotes } : {}),
+        ...(selectedFormat !== 'church_bulletin' ? { includeNotes } : {}),
+        ...(selectedFormat === 'teaching_notes'
+          ? { includeBigIdea, teacherHeadings, includeDiscussion, spacing }
+          : {}),
       };
       const result = await backend.executeExportJob({
         sermonId: selectedSermonId,
@@ -267,13 +278,13 @@ export default function ExportScreenContent() {
                   <Info size={12} className="text-ref-blue flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-fg-dim leading-relaxed">
                     V1 layouts are fixed by the canonical Typst templates — the pulpit
-                    manuscript prints on A4 and the bulletin on A5 with studio-set
-                    typography. Page size, font, and section toggles are not
-                    backend-configurable yet.
+                    manuscript and teaching notes print on A4, the bulletin on A5,
+                    with studio-set typography. Page size, font, and section toggles
+                    are not backend-configurable yet.
                   </p>
                 </div>
                 <div className="space-y-4">
-                  {selectedFormat === 'pulpit_manuscript' && (
+                  {selectedFormat !== 'church_bulletin' && (
                     <label className="flex items-center gap-2 cursor-pointer">
                       <button
                         role="switch"
@@ -285,9 +296,50 @@ export default function ExportScreenContent() {
                       </button>
                       <span className="text-xs text-fg">
                         Include private study notes
-                        <span className="text-fg-dim"> (exegetical-notes — pulpit manuscript only)</span>
+                        <span className="text-fg-dim"> (exegetical-notes — pulpit manuscript and teaching notes only)</span>
                       </span>
                     </label>
+                  )}
+
+                  {selectedFormat === 'teaching_notes' && (
+                    <div className="space-y-3 border-t border-border pt-3" data-testid="teaching-options">
+                      <p className="text-2xs font-mono-data uppercase tracking-widest text-fg-dim">
+                        Teaching layout
+                      </p>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <button role="switch" aria-checked={includeBigIdea} onClick={() => setIncludeBigIdea(!includeBigIdea)} className={`toggle-track ${includeBigIdea ? 'active' : ''}`}>
+                          <div className="toggle-thumb" />
+                        </button>
+                        <span className="text-xs text-fg">Include Big Idea</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <button role="switch" aria-checked={teacherHeadings} onClick={() => setTeacherHeadings(!teacherHeadings)} className={`toggle-track ${teacherHeadings ? 'active' : ''}`}>
+                          <div className="toggle-thumb" />
+                        </button>
+                        <span className="text-xs text-fg">Teacher-friendly headings</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <button role="switch" aria-checked={includeDiscussion} onClick={() => setIncludeDiscussion(!includeDiscussion)} className={`toggle-track ${includeDiscussion ? 'active' : ''}`}>
+                          <div className="toggle-thumb" />
+                        </button>
+                        <span className="text-xs text-fg">
+                          Include discussion / Q&amp;A section
+                          <span className="text-fg-dim"> (from <code className="font-mono-data">:::discussion</code> blocks)</span>
+                        </span>
+                      </label>
+                      <div>
+                        <label className="block text-xs text-fg-dim mb-1">Spacing density</label>
+                        <select
+                          value={spacing}
+                          onChange={(e) => setSpacing(e.target.value as 'compact' | 'comfortable')}
+                          className="input-field text-xs font-mono-data"
+                          data-testid="teaching-spacing"
+                        >
+                          <option value="comfortable">Comfortable — room for annotation</option>
+                          <option value="compact">Compact — tighter handout</option>
+                        </select>
+                      </div>
+                    </div>
                   )}
 
                   {/* Output */}

@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
-import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, GitBranch, FileText } from 'lucide-react';
+import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, GitBranch, FileText, Layers } from 'lucide-react';
 import type {
   PassageResult, StrongsEntry, CrossReference, PreachedResult, IllustrationFatigueResult,
 } from '@/lib/backend/types';
@@ -12,8 +12,9 @@ import type {
 } from '@/lib/backend/contracts/research_packet';
 import InsightsPanel from './InsightsPanel';
 import ChainStudyPanel from './ChainStudyPanel';
+import ReferenceContextPanel from './ReferenceContextPanel';
 
-type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights' | 'chain' | 'research';
+type StudyTab = 'passage' | 'strongs' | 'xref' | 'history' | 'fatigue' | 'insights' | 'chain' | 'research' | 'context';
 
 const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title: string }[] = [
   { id: 'passage', label: 'Passage', icon: Book, title: 'Scripture Passage' },
@@ -24,6 +25,7 @@ const TAB_CONFIG: { id: StudyTab; label: string; icon: React.ElementType; title:
   { id: 'fatigue', label: 'Fatigue', icon: BarChart2, title: 'Illustration Fatigue' },
   { id: 'insights', label: 'Insights', icon: Lightbulb, title: 'Sermon Intelligence' },
   { id: 'research', label: 'Research', icon: FileText, title: 'Research Packet' },
+  { id: 'context', label: 'Context', icon: Layers, title: 'Reference Context' },
 ];
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -316,7 +318,7 @@ export default function StudyRail() {
       </div>
 
       {/* Reference input (shared for passage/xref/history) */}
-      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && activeTab !== 'chain' && activeTab !== 'research' && (
+      {activeTab !== 'fatigue' && activeTab !== 'strongs' && activeTab !== 'insights' && activeTab !== 'chain' && activeTab !== 'research' && activeTab !== 'context' && (
         <div className="px-3 py-2 border-b border-border flex-shrink-0">
           <div className="flex gap-1.5">
             <input
@@ -840,6 +842,9 @@ export default function StudyRail() {
             onOpenReference={(ref) => { setReferenceInput(ref); lookupPassage(ref); setActiveTab('passage'); }}
           />
         )}
+
+        {/* ── Reference Context tab (Release Track R) ── */}
+        {activeTab === 'context' && <ReferenceContextPanel />}
       </div>
     </div>
   );

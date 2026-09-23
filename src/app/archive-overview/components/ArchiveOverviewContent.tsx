@@ -6,6 +6,7 @@ import { Search, X, ChevronUp, ChevronDown, Filter, ExternalLink, Archive, BookO
 import type { SermonSummary, ArchiveStats, IllustrationFatigueResult } from '@/lib/backend/types';
 import ArchiveStatsCards from './ArchiveStatsCards';
 import IllustrationFatiguePanel from './IllustrationFatiguePanel';
+import RkMark from '@/app/components/common/RkMark';
 
 const SermonsByMonthChart = dynamic(() => import('./SermonsByMonthChart'), { ssr: false });
 
@@ -144,6 +145,9 @@ export default function ArchiveOverviewContent() {
         <Archive size={15} className="text-accent" />
         <h1 className="text-lg font-600 text-fg">Sermon Archive</h1>
         <span className="text-xs font-mono-data text-fg-dim ml-2">{sermons.length} sermons</span>
+        <span className="ml-auto">
+          <RkMark />
+        </span>
         {stats?.unresolvedLintCount && stats.unresolvedLintCount > 0 && (
           <span className="flex items-center gap-1 text-2xs font-mono-data text-warn-amber bg-warn/8 px-2 py-0.5 rounded border border-warn/20 ml-2">
             <AlertTriangle size={9} /> {stats.unresolvedLintCount} unresolved findings
