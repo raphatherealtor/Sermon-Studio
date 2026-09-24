@@ -6,6 +6,7 @@ import {
   AlertTriangle, Info, Copy,
 } from 'lucide-react';
 import type { CodecRoundTripResult, ParsedDirective } from '@/lib/backend/types';
+import { KNOWN_DIRECTIVES } from '@/editor/codec/directiveCodec';
 
 const KNOWN_DIRECTIVE_SAMPLE = `:::big-idea{text="Christ is the eternal Word who became flesh to dwell among us"}
 The central claim of the Johannine prologue is the incarnation of the eternal Logos.
@@ -257,7 +258,7 @@ export default function CodecTestContent() {
               <div>
                 <p className="font-600 text-fg mb-1">Known Directives (specialized rendering)</p>
                 <ul className="space-y-0.5 font-mono-data">
-                  {['big-idea', 'application', 'illustration', 'note', 'scripture', 'movement', 'warrant'].map((d) => (
+                  {Array.from(KNOWN_DIRECTIVES).map((d) => (
                     <li key={d} className="text-accent">:::{d}</li>
                   ))}
                 </ul>

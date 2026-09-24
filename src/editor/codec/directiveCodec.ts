@@ -17,7 +17,7 @@
 import type { ParsedDirective, CodecRoundTripResult } from '@/lib/backend/types';
 
 /** Directive names recognized by the frontend for specialized rendering. */
-const KNOWN_DIRECTIVES = new Set([
+export const KNOWN_DIRECTIVES: ReadonlySet<string> = new Set([
   'movement',
   'illustration',
   'application',

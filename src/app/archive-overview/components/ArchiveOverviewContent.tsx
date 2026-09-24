@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { Search, X, ChevronUp, ChevronDown, Filter, ExternalLink, Archive, BookOpen, AlertTriangle, BarChart2, TrendingUp, FileText, Activity,  } from 'lucide-react';
 import type { SermonSummary, ArchiveStats, IllustrationFatigueResult } from '@/lib/backend/types';
@@ -356,9 +357,9 @@ export default function ArchiveOverviewContent() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <a href="/" className="opacity-0 group-hover:opacity-100 transition-opacity text-fg-dim hover:text-accent" title={`Open "${sermon.title}"`}>
+                          <Link href={`/?sermonId=${encodeURIComponent(sermon.id)}`} className="opacity-0 group-hover:opacity-100 transition-opacity text-fg-dim hover:text-accent" title={`Open "${sermon.title}"`}>
                             <ExternalLink size={11} />
-                          </a>
+                          </Link>
                         </td>
                       </tr>
                     ))

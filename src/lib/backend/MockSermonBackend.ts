@@ -1077,49 +1077,49 @@ export class MockSermonBackend implements SermonBackend {
 
   async getArchiveStats(): Promise<ArchiveStats> {
     await delay(200);
+    const sermons = this.sermons;
+    const totalWords = sermons.reduce((sum, sermon) => sum + sermon.wordCount, 0);
+    const sermonsByStatus = sermons.reduce<Record<string, number>>((counts, sermon) => {
+      counts[sermon.status] = (counts[sermon.status] ?? 0) + 1;
+      return counts;
+    }, {});
+    const preachedDates = sermons.map((sermon) => sermon.preachedOn).filter((date): date is string => !!date);
+    const createdDates = sermons.map((sermon) => sermon.createdAt.slice(0, 10)).sort();
+    const byWords = [...sermons].sort((a, b) => a.wordCount - b.wordCount);
+    const monthCounts = sermons.reduce<Record<string, number>>((counts, sermon) => {
+      const month = sermon.createdAt.slice(0, 7);
+      counts[month] = (counts[month] ?? 0) + 1;
+      return counts;
+    }, {});
+    const bookCounts = sermons.reduce<Record<string, number>>((counts, sermon) => {
+      const book = sermon.scripture.match(/^[1-3]?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*/)?.[0].trim();
+      if (book) counts[book] = (counts[book] ?? 0) + 1;
+      return counts;
+    }, {});
+    const lengthBuckets = [
+      { bucket: '< 1000', count: sermons.filter((s) => s.wordCount < 1000).length },
+      { bucket: '1000–2000', count: sermons.filter((s) => s.wordCount >= 1000 && s.wordCount < 2000).length },
+      { bucket: '2000–3000', count: sermons.filter((s) => s.wordCount >= 2000 && s.wordCount < 3000).length },
+      { bucket: '3000–4000', count: sermons.filter((s) => s.wordCount >= 3000 && s.wordCount < 4000).length },
+      { bucket: '4000+', count: sermons.filter((s) => s.wordCount >= 4000).length },
+    ];
     return {
-      totalSermons: 14,
-      totalSeries: 6,
-      totalWords: 42138,
-      lastPreachedOn: '2026-09-07',
-      oldestSermon: '2025-10-15',
-      newestSermon: '2026-09-19',
-      sermonsByStatus: { draft: 4, 'in-progress': 2, reviewed: 1, preached: 5, archived: 2 },
-      sermonsByMonth: [
-        { month: 'Oct 25', count: 1 },
-        { month: 'Nov 25', count: 1 },
-        { month: 'Dec 25', count: 1 },
-        { month: 'Jan 26', count: 1 },
-        { month: 'Feb 26', count: 0 },
-        { month: 'Mar 26', count: 0 },
-        { month: 'Apr 26', count: 2 },
-        { month: 'May 26', count: 1 },
-        { month: 'Jun 26', count: 2 },
-        { month: 'Jul 26', count: 1 },
-        { month: 'Aug 26', count: 2 },
-        { month: 'Sep 26', count: 2 },
-      ],
-      sermonsByBook: [
-        { book: 'John', count: 6 },
-        { book: 'Romans', count: 2 },
-        { book: 'Isaiah', count: 2 },
-        { book: 'Matthew', count: 1 },
-        { book: 'Luke', count: 1 },
-        { book: 'Galatians', count: 1 },
-        { book: 'James', count: 1 },
-        { book: 'Ephesians', count: 1 },
-        { book: 'Jeremiah', count: 1 },
-      ],
-      averageWordCount: 3010,
-      longestSermon: { id: 'sermon-006', title: 'The Suffering Servant', wordCount: 4450 },
-      shortestSermon: { id: 'sermon-012', title: 'Walk by the Spirit', wordCount: 440 },
-      sermonLengthDistribution: [
-        { bucket: '< 1000', count: 2 },
-        { bucket: '1000–2000', count: 1 },
-        { bucket: '2000–3000', count: 3 },
-        { bucket: '3000–4000', count: 6 },
-        { bucket: '4000+', count: 2 },
-      ],
+      totalSermons: sermons.length,
+      totalSeries: new Set(sermons.map((sermon) => sermon.series).filter(Boolean)).size,
+      totalWords,
+      lastPreachedOn: preachedDates.sort().at(-1) ?? null,
+      oldestSermon: createdDates[0] ?? null,
+      newestSermon: createdDates.at(-1) ?? null,
+      sermonsByStatus,
+      sermonsByMonth: Object.entries(monthCounts).sort(([a], [b]) => a.localeCompare(b)).map(([month, count]) => {
+        const [year, monthNumber] = month.split('-').map(Number);
+        return { month: `${new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${String(year).slice(-2)}`, count };
+      }),
+      sermonsByBook: Object.entries(bookCounts).sort((a, b) => b[1] - a[1]).map(([book, count]) => ({ book, count })),
+      averageWordCount: sermons.length ? Math.round(totalWords / sermons.length) : 0,
+      longestSermon: byWords.length ? { id: byWords[byWords.length - 1].id, title: byWords[byWords.length - 1].title, wordCount: byWords[byWords.length - 1].wordCount } : undefined,
+      shortestSermon: byWords.length ? { id: byWords[0].id, title: byWords[0].title, wordCount: byWords[0].wordCount } : undefined,
+      sermonLengthDistribution: lengthBuckets,
       applicationDensity: 0.72,
       unresolvedLintCount: 8,
       recentActivity: [

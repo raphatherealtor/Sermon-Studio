@@ -7,6 +7,7 @@ import EditorPanel from './editor/EditorPanel';
 import StudyRail from './editor/StudyRail';
 import type { SermonDocument } from '@/lib/backend/types';
 import { getActiveSermonMarkdown, lintIdentity } from '@/editor/transport/markdownTransport';
+import { saveActiveSermon } from '@/lib/store/saveWorkflow';
 
 interface SermonEditorWorkspaceProps {
   focusArchiveSearch?: boolean;
@@ -25,16 +26,28 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
     let cancelled = false;
     async function loadInitial() {
       try {
+        const requestedId = new URLSearchParams(window.location.search).get('sermonId');
+        if (requestedId) {
+          const current = useEditorStore.getState();
+          if (current.activeSermonId === requestedId && current.activeDocument) {
+            setLoading(false);
+            return;
+          }
+          if (current.isDirty && !(await saveActiveSermon(backend))) {
+            if (!cancelled) setLoading(false);
+            return;
+          }
+        }
         // No hardcoded sermon id: pick the first sermon the backend knows
         // about. An empty vault is a valid state, not an error.
         const sermons = await backend.listSermons();
         if (cancelled) return;
-        const first = sermons[0];
-        if (!first) {
+        const target = requestedId ? sermons.find((sermon) => sermon.id === requestedId) : sermons[0];
+        if (!target) {
           setLoading(false);
           return;
         }
-        const doc = await backend.loadSermon(first.id);
+        const doc = await backend.loadSermon(target.id);
         if (!cancelled) {
           setDocument(doc);
           setActiveSermon(doc.id);

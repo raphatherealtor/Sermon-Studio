@@ -14,6 +14,22 @@ import { BackendProvider } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
 import type { SermonDocument, SermonSummary } from '@/lib/backend/types';
 import type { SermonBackend } from '@/lib/backend/SermonBackend';
+import ArchiveOverviewContent from '@/app/archive-overview/components/ArchiveOverviewContent';
+import { fireEvent, screen } from '@testing-library/react';
+
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ href, ...props }: { href: string; children: React.ReactNode }) =>
+    React.createElement('a', {
+      ...props,
+      href,
+      onClick: (event: React.MouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        window.history.pushState({}, '', href);
+      },
+    }),
+}));
+jest.mock('next/dynamic', () => () => () => null);
 
 // The rails and the editor are not under test here; stub them so the
 // workspace can mount without the full editor surface.
@@ -73,6 +89,7 @@ async function renderWorkspace(backend: SermonBackend) {
 describe('SermonEditorWorkspace startup', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    window.history.replaceState({}, '', '/');
     useEditorStore.setState({
       activeDocument: null,
       activeSermonId: null,
@@ -110,6 +127,7 @@ describe('SermonEditorWorkspace startup', () => {
 describe('SermonEditorWorkspace lint seam', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    window.history.replaceState({}, '', '/');
     useEditorStore.setState({
       activeDocument: null,
       activeSermonId: null,
@@ -162,5 +180,65 @@ describe('SermonEditorWorkspace lint seam', () => {
     expect(backend.lintSermon).toHaveBeenLastCalledWith(
       expect.objectContaining({ body: editedBody })
     );
+  });
+});
+
+describe('archive Open handoff', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/archive-overview');
+    useEditorStore.setState({ activeDocument: DOC, activeSermonId: DOC.id, isDirty: false });
+  });
+
+  afterEach(() => window.history.replaceState({}, '', '/'));
+
+  it('opens selected sermon B through the editor backend/store lifecycle', async () => {
+    const sermonB = { ...DOC, id: 'sermon-b', title: 'Sermon B' };
+    const backend = createBackend();
+    backend.listSermons.mockResolvedValue([SUMMARY, { ...SUMMARY, id: sermonB.id, title: sermonB.title }]);
+    backend.loadSermon.mockImplementation(async (id) => id === sermonB.id ? sermonB : DOC);
+    backend.getArchiveStats = jest.fn().mockResolvedValue({
+      totalSermons: 2, totalSeries: 0, totalWords: 16, lastPreachedOn: null,
+      oldestSermon: null, newestSermon: null, sermonsByStatus: { draft: 2 }, sermonsByMonth: [],
+    });
+    backend.getIllustrationFatigue = jest.fn().mockResolvedValue([]);
+
+    const archive = render(<BackendProvider backend={backend}><ArchiveOverviewContent /></BackendProvider>);
+    fireEvent.click(await screen.findByTitle('Open "Sermon B"'));
+    expect(window.location.search).toBe('?sermonId=sermon-b');
+    archive.unmount();
+
+    await renderWorkspace(backend);
+    expect(backend.loadSermon).toHaveBeenCalledWith(sermonB.id);
+    expect(useEditorStore.getState().activeDocument?.id).toBe(sermonB.id);
+  });
+
+  it('saves a dirty current sermon before opening the requested one', async () => {
+    window.history.replaceState({}, '', '/?sermonId=sermon-b');
+    const sermonB = { ...DOC, id: 'sermon-b', title: 'Sermon B' };
+    const backend = createBackend();
+    backend.listSermons.mockResolvedValue([SUMMARY, { ...SUMMARY, id: sermonB.id, title: sermonB.title }]);
+    backend.loadSermon.mockResolvedValue(sermonB);
+    backend.saveSermon = jest.fn().mockResolvedValue({ success: true, savedAt: '2026-09-24T00:00:00Z', version: 2 });
+    useEditorStore.setState({ isDirty: true });
+
+    await renderWorkspace(backend);
+    expect(backend.saveSermon).toHaveBeenCalledWith(DOC);
+    expect(backend.saveSermon.mock.invocationCallOrder[0]).toBeLessThan(backend.loadSermon.mock.invocationCallOrder[0]);
+    expect(useEditorStore.getState().activeDocument?.id).toBe(sermonB.id);
+  });
+
+  it('keeps the current sermon open when the pending save conflicts', async () => {
+    window.history.replaceState({}, '', '/?sermonId=sermon-b');
+    const backend = createBackend();
+    backend.saveSermon = jest.fn().mockResolvedValue({
+      success: false,
+      conflict: { diskModifiedAt: '2026-09-24T00:00:00Z', diskVersion: 2, diskWordCount: 9 },
+    });
+    useEditorStore.setState({ isDirty: true });
+
+    await renderWorkspace(backend);
+    expect(backend.loadSermon).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().activeDocument?.id).toBe(DOC.id);
+    expect(useEditorStore.getState().conflictInfo).not.toBeNull();
   });
 });
