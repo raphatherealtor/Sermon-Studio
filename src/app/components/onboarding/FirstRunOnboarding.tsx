@@ -20,15 +20,22 @@ import {
 export default function FirstRunOnboarding() {
   // null until mounted: avoids SSR/localStorage hydration mismatch.
   const [visible, setVisible] = useState<boolean | null>(null);
+  // -1 = welcome (first run); 0 = first tour step (replay restarts at step 1).
+  const [startAtStep, setStartAtStep] = useState(-1);
 
   useEffect(() => {
-    if (!isOnboardingCompleted() || consumeTourReplayRequest()) {
+    const replayRequested = consumeTourReplayRequest();
+    if (!isOnboardingCompleted() || replayRequested) {
+      setStartAtStep(replayRequested ? 0 : -1);
       setVisible(true);
       return;
     }
     setVisible(false);
 
-    const onReplay = () => setVisible(true);
+    const onReplay = () => {
+      setStartAtStep(0);
+      setVisible(true);
+    };
     window.addEventListener(TOUR_REPLAY_EVENT, onReplay);
     return () => window.removeEventListener(TOUR_REPLAY_EVENT, onReplay);
   }, []);
@@ -40,5 +47,5 @@ export default function FirstRunOnboarding() {
     setVisible(false);
   };
 
-  return <OnboardingOverlay onFinish={finish} />;
+  return <OnboardingOverlay onFinish={finish} initialScreen={startAtStep} />;
 }

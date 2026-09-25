@@ -98,7 +98,9 @@ describe('first-run gate', () => {
     render(<FirstRunOnboarding />);
     fireEvent.click(screen.getByTestId('onboarding-begin'));
     for (let i = 0; i < 4; i++) fireEvent.click(screen.getByTestId('onboarding-next'));
-    expect(screen.queryByText(/AI/i)).toBeNull();
+    // Word-boundary match: "AI" the technology must not appear, while words
+    // like "Chain Study" (which contain the substring "ai") are fine.
+    expect(screen.queryByText(/\bAI\b/i)).toBeNull();
   });
 });
 

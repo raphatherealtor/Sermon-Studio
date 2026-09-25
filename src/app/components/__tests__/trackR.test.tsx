@@ -21,6 +21,7 @@ import {
   markOnboardingCompleted,
   resetOnboardingState,
 } from '@/lib/onboarding/firstRun';
+import { RK_NAME, RK_ATTRIBUTION } from '@/lib/identity/rk';
 import type { SermonDocument } from '@/lib/backend/types';
 
 const DOC: SermonDocument = {
@@ -49,7 +50,18 @@ describe('A. RK personalization', () => {
   it('1. RK mark and attribution appear on the onboarding dedication', () => {
     render(<OnboardingOverlay onFinish={() => {}} />);
     expect(screen.getByTestId('rk-mark')).toBeTruthy();
-    expect(screen.getByText('Prepared for Raphael Knox · Reverend Knox')).toBeTruthy();
+    expect(screen.getByText('Prepared for Rafael Knox · Reverend Knox')).toBeTruthy();
+  });
+
+  it('canonical name is "Rafael" (F) and the "Raphael" misspelling never appears', () => {
+    render(<OnboardingOverlay onFinish={() => {}} />);
+    // Canonical spelling renders on the dedication surface.
+    expect(screen.getByText('Prepared for Rafael Knox · Reverend Knox')).toBeTruthy();
+    // The old misspelling is absent from every user-facing identity surface.
+    expect(screen.getByTestId('onboarding-overlay').textContent).not.toContain('Raphael');
+    // The identity module itself carries the corrected canonical value.
+    expect(RK_NAME).toBe('Rafael Knox');
+    expect(RK_ATTRIBUTION).toBe('Prepared for Rafael Knox · Reverend Knox');
   });
 
   it('2. the forty-year ministry framing is preserved verbatim', () => {
@@ -73,7 +85,7 @@ describe('A. RK personalization', () => {
     render(<RkMark />);
     const mark = screen.getByTestId('rk-mark');
     expect(within(mark).getByText('RK')).toBeTruthy();
-    expect(within(mark).queryByText(/Raphael Knox/)).toBeNull();
+    expect(within(mark).queryByText(/Rafael Knox/)).toBeNull();
   });
 });
 
