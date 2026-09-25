@@ -917,6 +917,7 @@ export class MockSermonBackend implements SermonBackend {
 
   async getStrongs(id: string): Promise<StrongsEntry> {
     await delay(200);
+    if (!/^[GH][1-9][0-9]{0,4}$/i.test(id)) throw new Error(`Invalid Strong's ID: ${id}`);
     const entries: Record<string, StrongsEntry> = {
       G740: {
         id: 'G740', lemma: 'ἄρτος', transliteration: 'artos',
@@ -981,7 +982,7 @@ export class MockSermonBackend implements SermonBackend {
   async getCrossReferences(reference: string): Promise<CrossReference[]> {
     await delay(200);
     const xrefs: Record<string, CrossReference[]> = {
-      default: [
+      'John 6:35': [
         { reference: 'Exodus 16:4', snippet: 'Behold, I am about to rain bread from heaven for you…', relevance: 0.92, category: 'OT Background' },
         { reference: 'Psalm 78:24', snippet: 'he rained down on them manna to eat and gave them the grain of heaven.', relevance: 0.88, category: 'OT Background' },
         { reference: 'John 4:14', snippet: 'whoever drinks of the water that I will give him will never be thirsty again', relevance: 0.85, category: 'Johannine Parallel' },
@@ -990,11 +991,18 @@ export class MockSermonBackend implements SermonBackend {
         { reference: 'Deuteronomy 8:3', snippet: 'man does not live by bread alone, but man lives by every word that comes from the mouth of the LORD', relevance: 0.72, category: 'OT Background' },
       ],
     };
-    return xrefs[reference] || xrefs['default'];
+    return xrefs[reference] ?? [];
   }
 
   async getChainStudy(reference: string): Promise<ChainStudyResult> {
     await delay(250);
+    if (reference !== 'John 6:35') {
+      return {
+        engineVersion: 'chain-study-1.0', seedReference: reference, canonAvailable: true,
+        chains: [], archiveConnections: [],
+        parameters: { maxSearchDepth: 2, maxNeighborsPerNode: 6, maxChainReferences: 12, maxChains: 5, maxArchiveConnections: 10 },
+      };
+    }
     // Deterministic preview fixture — same shape as the Rust engine emits.
     const canonicalStudy: Provenance = {
       class: 'biblical-study', sourceId: 'openbible-xrefs', sourceLabel: 'OpenBible.info Cross References',
@@ -1030,11 +1038,13 @@ export class MockSermonBackend implements SermonBackend {
 
   async getPreachedOn(reference: string): Promise<PreachedResult[]> {
     await delay(150);
-    return [
-      { sermonId: 'sermon-003', sermonTitle: 'The Good Shepherd', preachedOn: '2026-09-07', series: 'Gospel of John', wordCount: 3105 },
-      { sermonId: 'sermon-009', sermonTitle: 'The Prodigal Son Returns', preachedOn: '2026-01-05', series: null, wordCount: 3890 },
-      { sermonId: 'sermon-006', sermonTitle: 'The Suffering Servant', preachedOn: '2026-06-29', series: 'Messianic Prophecies', wordCount: 4450 },
-    ];
+    const query = reference.trim();
+    return this.sermons
+      .filter((sermon) => query && sermon.preachedOn && sermon.scripture.startsWith(query))
+      .map((sermon) => ({
+        sermonId: sermon.id, sermonTitle: sermon.title, preachedOn: sermon.preachedOn!,
+        series: sermon.series, wordCount: sermon.wordCount,
+      }));
   }
 
   // ── Index ─────────────────────────────────────────────────────────────────
@@ -1346,12 +1356,19 @@ export class MockSermonBackend implements SermonBackend {
         insights: archiveOnlyInsights(),
       };
     }
-    return fullInsights(sermonId, 'John 6:35–51');
+    if (sermonId === 'sermon-001') return fullInsights(sermonId, 'John 6:35–51');
+    return {
+      engineVersion: INTELLIGENCE_ENGINE_VERSION,
+      generatedAt: INTELLIGENCE_GENERATED_AT,
+      subjectSermonId: sermonId,
+      subjectReference: this.sermons.find((sermon) => sermon.id === sermonId)?.scripture,
+      biblicalDataAvailable: true,
+      insights: [],
+    };
   }
 
   async getRelatedSermons(sermonId: string): Promise<IntelligenceResult> {
-    await delay(180);
-    const result = fullInsights(sermonId, 'John 6:35–51');
+    const result = await this.getSermonInsights(sermonId);
     return { ...result, insights: result.insights.filter((i) => i.kind === 'related-sermon') };
   }
 

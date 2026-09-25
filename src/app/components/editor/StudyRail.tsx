@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
 import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, GitBranch, FileText, Layers } from 'lucide-react';
@@ -83,10 +83,15 @@ export default function StudyRail() {
   const [xrefs, setXrefs] = useState<CrossReference[]>([]);
   const [xrefLoading, setXrefLoading] = useState(false);
   const [xrefError, setXrefError] = useState<string | null>(null);
+  const [xrefSearched, setXrefSearched] = useState(false);
 
   const [preached, setPreached] = useState<PreachedResult[]>([]);
   const [preachedLoading, setPreachedLoading] = useState(false);
   const [preachedError, setPreachedError] = useState<string | null>(null);
+  const passageRequest = useRef(0);
+  const xrefRequest = useRef(0);
+  const historyRequest = useRef(0);
+  const previousSermonId = useRef(activeDocument?.id);
 
   const [chainRunKey, setChainRunKey] = useState(0);
 
@@ -104,26 +109,20 @@ export default function StudyRail() {
   const [attachBusy, setAttachBusy] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Auto-populate reference from active document
-  useEffect(() => {
-    if (activeDocument?.scripture) {
-      const ref = activeDocument.scripture.split('–')[0].split('—')[0].trim();
-      setReferenceInput(ref);
-    }
-  }, [activeDocument?.id]);
-
   const lookupPassage = useCallback(async (ref?: string) => {
     const r = ref || referenceInput;
     if (!r.trim()) return;
+    const request = ++passageRequest.current;
     setPassageLoading(true);
     setPassageError(null);
+    setPassage(null);
     try {
       const result = await backend.getPassage(r.trim());
-      setPassage(result);
+      if (request === passageRequest.current) setPassage(result);
     } catch {
-      setPassageError('Failed to load passage. Check reference format.');
+      if (request === passageRequest.current) setPassageError('Failed to load passage. Check reference format.');
     } finally {
-      setPassageLoading(false);
+      if (request === passageRequest.current) setPassageLoading(false);
     }
   }, [backend, referenceInput]);
 
@@ -145,32 +144,65 @@ export default function StudyRail() {
   const lookupXrefs = useCallback(async (ref?: string) => {
     const r = ref || referenceInput;
     if (!r.trim()) return;
+    const request = ++xrefRequest.current;
     setXrefLoading(true);
     setXrefError(null);
+    setXrefSearched(true);
+    setXrefs([]);
     try {
       const refs = await backend.getCrossReferences(r.trim());
-      setXrefs(refs);
+      if (request === xrefRequest.current) setXrefs(refs);
     } catch {
-      setXrefError('Failed to load cross references.');
+      if (request === xrefRequest.current) setXrefError('Failed to load cross references.');
     } finally {
-      setXrefLoading(false);
+      if (request === xrefRequest.current) setXrefLoading(false);
     }
   }, [backend, referenceInput]);
 
   const lookupHistory = useCallback(async (ref?: string) => {
     const r = ref || referenceInput;
     if (!r.trim()) return;
+    const request = ++historyRequest.current;
     setPreachedLoading(true);
     setPreachedError(null);
+    setPreached([]);
     try {
       const hist = await backend.getPreachedOn(r.trim());
-      setPreached(hist);
+      if (request === historyRequest.current) setPreached(hist);
     } catch {
-      setPreachedError('Failed to load preaching history.');
+      if (request === historyRequest.current) setPreachedError('Failed to load preaching history.');
     } finally {
-      setPreachedLoading(false);
+      if (request === historyRequest.current) setPreachedLoading(false);
     }
   }, [backend, referenceInput]);
+
+  // A new sermon invalidates study results and in-flight requests for the old one.
+  useEffect(() => {
+    const sermonChanged = previousSermonId.current !== activeDocument?.id;
+    previousSermonId.current = activeDocument?.id;
+    passageRequest.current++;
+    xrefRequest.current++;
+    historyRequest.current++;
+    setPassage(null);
+    setXrefs([]);
+    setPreached([]);
+    setPassageLoading(false);
+    setXrefLoading(false);
+    setPreachedLoading(false);
+    setPassageError(null);
+    setXrefError(null);
+    setXrefSearched(false);
+    setPreachedError(null);
+    if (!activeDocument?.scripture) {
+      setReferenceInput('');
+      return;
+    }
+    const ref = activeDocument.scripture.split('–')[0].split('—')[0].trim();
+    setReferenceInput(ref);
+    if (sermonChanged && activeTab === 'passage') void lookupPassage(ref);
+    if (sermonChanged && activeTab === 'xref') void lookupXrefs(ref);
+    if (sermonChanged && activeTab === 'history') void lookupHistory(ref);
+  }, [activeDocument?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadFatigue = useCallback(async () => {
     setFatigueLoading(true);
@@ -583,7 +615,7 @@ export default function StudyRail() {
             {xrefs.length === 0 && !xrefLoading && !xrefError && (
               <div className="py-8 text-center">
                 <Link2 size={20} className="text-fg-dim mx-auto mb-2" />
-                <p className="text-xs text-fg-dim">Enter a reference above to find cross references</p>
+                <p className="text-xs text-fg-dim">{xrefSearched ? 'No cross references returned for this reference' : 'Enter a reference above to find cross references'}</p>
               </div>
             )}
           </div>
