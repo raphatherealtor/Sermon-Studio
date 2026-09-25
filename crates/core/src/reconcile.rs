@@ -594,7 +594,8 @@ fn execute_plan(
                 }
                 Err(e) => {
                     // The canonical file stays exactly as it is; we only
-                    // record that the derived repair for it could not run.
+                    // exclude stale derived text and report the failure.
+                    remove_derived_rows(conn, rel_path)?;
                     report.read_errors.push(format!("{rel_path}: {e}"));
                 }
             },
@@ -725,7 +726,10 @@ pub fn reconcile_paths(
                         report.new_files += 1;
                     }
                 }
-                Err(e) => report.read_errors.push(format!("{rel}: {e}")),
+                Err(e) => {
+                    remove_derived_rows(&conn, rel)?;
+                    report.read_errors.push(format!("{rel}: {e}"));
+                }
             }
         } else {
             // Gone from disk. If the index still lists it, repair derived

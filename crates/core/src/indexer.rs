@@ -201,6 +201,13 @@ fn index_one(
 
     let tx = conn.transaction()?;
 
+    // FTS is self-contained, so clear text for identities displaced by a path
+    // or frontmatter-ID change before deleting their index rows.
+    tx.execute(
+        "DELETE FROM sermons_fts WHERE sermon_id IN
+         (SELECT id FROM sermon_index WHERE file_path = ?1 OR id = ?2)",
+        params![rel_path, id],
+    )?;
     // Remove any prior rows for this file path or id (handles renames/id changes).
     tx.execute("DELETE FROM sermon_index WHERE file_path = ?1 OR id = ?2", params![rel_path, id])?;
 
