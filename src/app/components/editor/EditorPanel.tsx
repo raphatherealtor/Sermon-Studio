@@ -279,7 +279,7 @@ export default function EditorPanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background" data-tour="writing-desk">
       {/* Conflict banner — inline, non-modal, docked at top */}
       {conflictInfo && (
         <ConflictBanner

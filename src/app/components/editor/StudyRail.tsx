@@ -339,7 +339,7 @@ export default function StudyRail() {
   };
 
   return (
-    <div className="flex flex-col flex-shrink-0 border-l border-border bg-panel overflow-hidden" style={{ width: 280 }}>
+    <div className="flex flex-col flex-shrink-0 border-l border-border bg-panel overflow-hidden" style={{ width: 280 }} data-tour="study-tools">
       {/* Header */}
       <div className="panel-header">
         <span className="text-2xs font-600 text-fg-dim uppercase tracking-widest font-mono-data">
@@ -377,6 +377,7 @@ export default function StudyRail() {
             <button
               key={`study-tab-${tab.id}`}
               onClick={() => handleTabChange(tab.id)}
+              data-tour={tab.id === 'insights' ? 'insights' : undefined}
               className={[
                 'flex-1 flex items-center justify-center gap-0.5 py-2 text-2xs font-600 transition-colors duration-100',
                 activeTab === tab.id

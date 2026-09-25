@@ -10,7 +10,7 @@ import React from 'react';
 import { RK_MONOGRAM, RK_ATTRIBUTION } from '@/lib/identity/rk';
 
 interface RkMarkProps {
-  /** Show the "Prepared for Raphael Knox · Reverend Knox" caption. */
+  /** Show the "Prepared for Rafael Knox · Reverend Knox" caption. */
   withAttribution?: boolean;
   /** Monogram square size in pixels (default 28). */
   size?: number;

@@ -184,7 +184,7 @@ export default function ArchiveRail({ focusSearch, onSearchFocused }: ArchiveRai
   const conflictCount = sermons.filter((s) => s.hasConflict).length;
 
   return (
-    <div className="panel-rail w-60 flex-shrink-0 relative">
+    <div className="panel-rail w-60 flex-shrink-0 relative" data-tour="archive">
       {/* Header */}
       <div className="panel-header">
         <div className="flex items-center gap-1.5">
