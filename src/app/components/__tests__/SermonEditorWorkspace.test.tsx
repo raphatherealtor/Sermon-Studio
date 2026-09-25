@@ -15,7 +15,7 @@ import { useEditorStore } from '@/lib/store/editorStore';
 import type { SermonDocument, SermonSummary } from '@/lib/backend/types';
 import type { SermonBackend } from '@/lib/backend/SermonBackend';
 import ArchiveOverviewContent from '@/app/archive-overview/components/ArchiveOverviewContent';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -186,7 +186,7 @@ describe('SermonEditorWorkspace lint seam', () => {
 describe('archive Open handoff', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/archive-overview');
-    useEditorStore.setState({ activeDocument: DOC, activeSermonId: DOC.id, isDirty: false });
+    useEditorStore.setState({ activeDocument: DOC, activeSermonId: DOC.id, isDirty: false, conflictInfo: null, isSaving: false });
   });
 
   afterEach(() => window.history.replaceState({}, '', '/'));
@@ -230,6 +230,7 @@ describe('archive Open handoff', () => {
   it('keeps the current sermon open when the pending save conflicts', async () => {
     window.history.replaceState({}, '', '/?sermonId=sermon-b');
     const backend = createBackend();
+    backend.listSermons.mockResolvedValue([SUMMARY, { ...SUMMARY, id: 'sermon-b', title: 'Sermon B' }]);
     backend.saveSermon = jest.fn().mockResolvedValue({
       success: false,
       conflict: { diskModifiedAt: '2026-09-24T00:00:00Z', diskVersion: 2, diskWordCount: 9 },
@@ -237,6 +238,7 @@ describe('archive Open handoff', () => {
     useEditorStore.setState({ isDirty: true });
 
     await renderWorkspace(backend);
+    await waitFor(() => expect(useEditorStore.getState().conflictInfo).not.toBeNull());
     expect(backend.loadSermon).not.toHaveBeenCalled();
     expect(useEditorStore.getState().activeDocument?.id).toBe(DOC.id);
     expect(useEditorStore.getState().conflictInfo).not.toBeNull();

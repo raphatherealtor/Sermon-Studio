@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
 import { saveActiveSermon } from '@/lib/store/saveWorkflow';
+import { switchToSermon } from '@/lib/store/sermonOpenWorkflow';
 import {
   Search, Plus, Save, FileOutput, AlertTriangle, Archive,
   Settings, Code2, BookOpen, Hash, Link2, X, Command,
@@ -28,7 +29,7 @@ interface CommandPaletteProps {
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const router = useRouter();
   const backend = useBackend();
-  const { activeDocument, setDocument, setActiveSermon, setLintFindings, setLinting } = useEditorStore();
+  const { activeDocument, setLintFindings, setLinting } = useEditorStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -47,12 +48,11 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   }, [backend, activeDocument, onClose, setLinting, setLintFindings]);
 
   const createNewSermon = useCallback(async () => {
-    onClose();
-    const doc = await backend.createSermon({ title: 'Untitled Sermon' });
-    setDocument(doc);
-    setActiveSermon(doc.id);
-    router.push('/');
-  }, [backend, onClose, setDocument, setActiveSermon, router]);
+    if (await switchToSermon(backend, () => backend.createSermon({ title: 'Untitled Sermon' }))) {
+      onClose();
+      router.push('/');
+    }
+  }, [backend, onClose, router]);
 
   const saveSermon = useCallback(async () => {
     if (!activeDocument) return;

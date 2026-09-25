@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
+import { openSermon } from '@/lib/store/sermonOpenWorkflow';
 import { Search, Book, Link2, Clock, Loader2, Hash, AlertTriangle, Copy, Plus, RefreshCw, X, CheckCircle, BarChart2, Lightbulb, GitBranch, FileText, Layers } from 'lucide-react';
 import type {
   PassageResult, StrongsEntry, CrossReference, PreachedResult, IllustrationFatigueResult,
@@ -646,7 +647,7 @@ export default function StudyRail() {
                 </p>
                 {preached.map((p, i) => (
                   <div key={`hist-${i}`} className="border border-border rounded p-2.5">
-                    <p className="text-xs font-600 text-fg mb-0.5">{p.sermonTitle}</p>
+                    <button onClick={() => void openSermon(backend, p.sermonId)} className="text-xs font-600 text-fg hover:text-accent mb-0.5 text-left" title={`Open ${p.sermonTitle}`}>{p.sermonTitle}</button>
                     <div className="flex items-center gap-2 text-2xs font-mono-data text-fg-dim">
                       <span className="text-accent">{p.preachedOn}</span>
                       {p.series && <span>· {p.series}</span>}

@@ -7,7 +7,7 @@ import EditorPanel from './editor/EditorPanel';
 import StudyRail from './editor/StudyRail';
 import type { SermonDocument } from '@/lib/backend/types';
 import { getActiveSermonMarkdown, lintIdentity } from '@/editor/transport/markdownTransport';
-import { saveActiveSermon } from '@/lib/store/saveWorkflow';
+import { openSermon } from '@/lib/store/sermonOpenWorkflow';
 
 interface SermonEditorWorkspaceProps {
   focusArchiveSearch?: boolean;
@@ -16,7 +16,7 @@ interface SermonEditorWorkspaceProps {
 
 export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSearchFocused }: SermonEditorWorkspaceProps) {
   const backend = useBackend();
-  const { setDocument, activeDocument, setLintFindings, setLinting, setActiveSermon } = useEditorStore();
+  const { activeDocument, setLintFindings, setLinting } = useEditorStore();
   const [loading, setLoading] = React.useState(true);
 
   // Track previous lint identity to debounce on meaningful changes
@@ -33,10 +33,6 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
             setLoading(false);
             return;
           }
-          if (current.isDirty && !(await saveActiveSermon(backend))) {
-            if (!cancelled) setLoading(false);
-            return;
-          }
         }
         // No hardcoded sermon id: pick the first sermon the backend knows
         // about. An empty vault is a valid state, not an error.
@@ -47,19 +43,15 @@ export default function SermonEditorWorkspace({ focusArchiveSearch, onArchiveSea
           setLoading(false);
           return;
         }
-        const doc = await backend.loadSermon(target.id);
-        if (!cancelled) {
-          setDocument(doc);
-          setActiveSermon(doc.id);
-          setLoading(false);
-        }
+        await openSermon(backend, target.id);
+        if (!cancelled) setLoading(false);
       } catch {
         if (!cancelled) setLoading(false);
       }
     }
     loadInitial();
     return () => { cancelled = true; };
-  }, [backend, setDocument, setActiveSermon]);
+  }, [backend]);
 
   const runLint = useCallback(
     async (doc: SermonDocument) => {

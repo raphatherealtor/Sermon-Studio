@@ -41,3 +41,22 @@ it('refreshes study passage on sermon switch and ignores the old late response',
   fireEvent.click(screen.getByTitle('Insert Insert'));
   expect(useEditorStore.getState().activeDocument?.body).toContain('> Romans 8:1: No condemnation.');
 });
+
+it('opens a History sermon only after saving the dirty current sermon', async () => {
+  const target = documentFor('sermon-b', 'John 6:35');
+  const backend = {
+    getPreachedOn: jest.fn().mockResolvedValue([{
+      sermonId: 'sermon-b', sermonTitle: 'Sermon B', preachedOn: '2026-09-20',
+      series: null, wordCount: 10,
+    }]),
+    saveSermon: jest.fn().mockResolvedValue({ success: true, savedAt: '2026-09-24T00:00:00Z', version: 2 }),
+    loadSermon: jest.fn().mockResolvedValue(target),
+  } as unknown as jest.Mocked<SermonBackend>;
+  useEditorStore.setState({ activeDocument: documentFor('sermon-a', 'John 6:35'),
+    activeSermonId: 'sermon-a', isDirty: true, isSaving: false, conflictInfo: null });
+  render(<BackendProvider backend={backend}><StudyRail /></BackendProvider>);
+  fireEvent.click(screen.getByTitle('Preached On'));
+  fireEvent.click(await screen.findByTitle('Open Sermon B'));
+  await waitFor(() => expect(useEditorStore.getState().activeDocument?.id).toBe('sermon-b'));
+  expect(backend.saveSermon.mock.invocationCallOrder[0]).toBeLessThan(backend.loadSermon.mock.invocationCallOrder[0]);
+});

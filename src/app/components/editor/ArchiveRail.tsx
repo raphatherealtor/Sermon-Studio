@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
+import { openSermon as openSermonAction, switchToSermon } from '@/lib/store/sermonOpenWorkflow';
 import { Search, Plus, X, BookOpen, ChevronRight, Pin, PinOff, Copy, Archive, Trash2, Edit3, AlertTriangle, Loader2, RefreshCw, Filter, FileQuestion, HardDrive, GitMerge, MoreHorizontal,  } from 'lucide-react';
 import type { SermonSummary, SearchResult, FilesystemState } from '@/lib/backend/types';
 
@@ -45,7 +46,7 @@ interface ArchiveRailProps {
 
 export default function ArchiveRail({ focusSearch, onSearchFocused }: ArchiveRailProps) {
   const backend = useBackend();
-  const { activeSermonId, setDocument, setActiveSermon, isDirty, conflictInfo } = useEditorStore();
+  const { activeSermonId, setActiveSermon, isDirty, conflictInfo } = useEditorStore();
   const [sermons, setSermons] = useState<SermonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,23 +107,19 @@ export default function ArchiveRail({ focusSearch, onSearchFocused }: ArchiveRai
   }, [contextMenu]);
 
   const openSermon = useCallback(async (id: string) => {
-    if (id === activeSermonId) return;
-    const doc = await backend.loadSermon(id);
-    setDocument(doc);
-    setActiveSermon(id);
-  }, [backend, activeSermonId, setDocument, setActiveSermon]);
+    await openSermonAction(backend, id);
+  }, [backend]);
 
   const createNew = useCallback(async () => {
     setCreating(true);
     try {
-      const doc = await backend.createSermon({ title: 'Untitled Sermon', scripture: '' });
-      setDocument(doc);
-      setActiveSermon(doc.id);
-      await loadSermons(true);
+      if (await switchToSermon(backend, () => backend.createSermon({ title: 'Untitled Sermon', scripture: '' }))) {
+        await loadSermons(true);
+      }
     } finally {
       setCreating(false);
     }
-  }, [backend, setDocument, setActiveSermon, loadSermons]);
+  }, [backend, loadSermons]);
 
   const handlePin = async (id: string, pinned: boolean) => {
     setContextMenu(null);
@@ -132,10 +129,9 @@ export default function ArchiveRail({ focusSearch, onSearchFocused }: ArchiveRai
 
   const handleDuplicate = async (id: string) => {
     setContextMenu(null);
-    const doc = await backend.duplicateSermon({ id });
-    setDocument(doc);
-    setActiveSermon(doc.id);
-    await loadSermons(true);
+    if (await switchToSermon(backend, () => backend.duplicateSermon({ id }))) {
+      await loadSermons(true);
+    }
   };
 
   const handleArchive = async (id: string) => {

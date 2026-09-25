@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
+import { openSermon } from '@/lib/store/sermonOpenWorkflow';
 import {
   Lightbulb, ChevronDown, ChevronUp, Book, Archive, Loader2, AlertTriangle, RefreshCw,
 } from 'lucide-react';
@@ -109,7 +110,7 @@ function InsightCard({
 
 export default function InsightsPanel() {
   const backend = useBackend();
-  const { activeDocument, setDocument, setActiveSermon } = useEditorStore();
+  const { activeDocument } = useEditorStore();
   const [result, setResult] = useState<IntelligenceResult | null>(null);
   const [sermonsById, setSermonsById] = useState<Map<string, SermonSummary>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -137,14 +138,9 @@ export default function InsightsPanel() {
     load();
   }, [load]);
 
-  const openSermon = useCallback(
-    async (id: string) => {
-      const doc = await backend.loadSermon(id);
-      setDocument(doc);
-      setActiveSermon(id);
-    },
-    [backend, setDocument, setActiveSermon]
-  );
+  const openRelatedSermon = useCallback(async (id: string) => {
+    await openSermon(backend, id);
+  }, [backend]);
 
   if (!activeDocument) {
     return <p className="text-xs text-fg-dim p-3">Select a sermon to see intelligence.</p>;
@@ -199,7 +195,7 @@ export default function InsightsPanel() {
       ) : (
         <div className="fade-in space-y-2">
           {insights.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} sermonsById={sermonsById} onOpen={openSermon} />
+            <InsightCard key={insight.id} insight={insight} sermonsById={sermonsById} onOpen={openRelatedSermon} />
           ))}
         </div>
       )}

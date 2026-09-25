@@ -17,6 +17,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { GitBranch, Loader2, AlertTriangle, RefreshCw, Archive } from 'lucide-react';
 import { useBackend } from '@/lib/backend/BackendContext';
 import { useEditorStore } from '@/lib/store/editorStore';
+import { openSermon } from '@/lib/store/sermonOpenWorkflow';
 import type {
   ChainStudyResult,
   ChainStudyChain,
@@ -186,7 +187,7 @@ function ArchiveOverlay({
 
 export default function ChainStudyPanel({ referenceInput, onOpenReference }: ChainStudyPanelProps) {
   const backend = useBackend();
-  const { activeDocument, setDocument, setActiveSermon } = useEditorStore();
+  const { activeDocument } = useEditorStore();
   const [result, setResult] = useState<ChainStudyResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,13 +216,9 @@ export default function ChainStudyPanel({ referenceInput, onOpenReference }: Cha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
 
-  // Navigation reuses the exact Archive Rail open path (existing sermon IDs).
-  const openSermon = useCallback(async (sermonId: string) => {
-    if (sermonId === useEditorStore.getState().activeSermonId) return;
-    const doc = await backend.loadSermon(sermonId);
-    setDocument(doc);
-    setActiveSermon(sermonId);
-  }, [backend, setDocument, setActiveSermon]);
+  const openArchiveSermon = useCallback(async (sermonId: string) => {
+    await openSermon(backend, sermonId);
+  }, [backend]);
 
   // Passage navigation stays inside the rail's shared reference workflow —
   // implemented by StudyRail via onOpenReference.
@@ -301,7 +298,7 @@ export default function ChainStudyPanel({ referenceInput, onOpenReference }: Cha
       )}
 
       {/* "From Your Archive" — additive overlay, provenance your-archive */}
-      <ArchiveOverlay connections={result.archiveConnections} onOpenSermon={openSermon} />
+      <ArchiveOverlay connections={result.archiveConnections} onOpenSermon={openArchiveSermon} />
     </div>
   );
 }
